@@ -7,8 +7,13 @@
 
 int main() {
 
-    //reading files
+    // Chamber Pressures
+    int cP = 1;
+    // size parameters
+    double r = 0.1;  // radii
+    double l = 1.0;  // length
 
+    //reading files
     // Initialize vectors to store data
     std::vector<double> OFtemps;
     std::vector<double> gammas;
@@ -41,74 +46,7 @@ int main() {
         Mol.push_back(mol);
     }
 
-    // code to check it is reading the correct values
-    /*// Print the results
-    std::cout << "OFtemps: ";
-    for (const auto &value : OFtemps) {
-        std::cout << value << " ";
+    double thrust = hybrid_rocket_thrust(r,l, OFtemps[0], Mol[0] , gammas[0],  cP);
+    std::cout << thrust << std::endl;
     }
-    std::cout << std::endl;
-
-    std::cout << "gammas: ";
-    for (const auto &value : gammas) {
-        std::cout << value << " ";
-    }
-    std::cout << std::endl;
-
-    std::cout << "Mol: ";
-    for (const auto &value : Mol) {
-        std::cout << value << " ";
-    }
-    std::cout << std::endl;
-     */
-
-
-    // Chamber Pressures
-
-    int chamberPressures = 1;
-
-    // calculates rocket thrust
-
-    double radii[] = {0.01, 0.02, 0.03, 0.04, 0.05, 0.06, 0.07, 0.08, 0.09, 0.1}; //# fuel grain radii  m
-    double heights[] = {0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0};  //# fuel grain heights  m
-    // make loops
-    double expansion_ratio[] = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10}; // should not be iterating here
-
-    std::vector<std::complex<double>> thrustVals;
-
-    for (int i = 0; i < sizeof(radii) / sizeof(radii[0]); i++) {
-
-        double r = radii[i];
-
-        for (int y = 0; y < sizeof(heights) / sizeof(heights[0]); y++) {
-
-            for (double e: expansion_ratio) {
-                double h = heights[y];
-                std::complex<double> thrust = hybrid_rocket_thrust(r, h, OFtemps, gammas, Mol, chamberPressures, e);
-
-                // Store thrust value in the vector
-                thrustVals.push_back(thrust);
-            }
-        }
-
-        // Sort the thrust values in descending order
-       // std::sort(thrustVals.begin(), thrustVals.end(), std::greater<std::complex<double>>());
-
-// Print the top 5 thrust values
-    }
-    size_t n = thrustVals.size();
-    size_t k = std::min<size_t>(5, n);  // min ensures k is within the bounds of the vector size
-
-    std::nth_element(thrustVals.begin(), thrustVals.begin() + k, thrustVals.end(),
-                     [](const std::complex<double>& a, const std::complex<double>& b) {
-                         return std::abs(a) > std::abs(b);
-                     });
-
-    // Output the top five values
-    std::cout << "Top five values of thrustVals:" << std::endl;
-    for (size_t i = 0; i < k; ++i) {
-        std::cout << "Value " << i + 1 << ": " << thrustVals[i] << std::endl;
-    }
-}
-
 

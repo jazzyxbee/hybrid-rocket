@@ -6,163 +6,140 @@
 #define UNTITLED4_HYBRIDROCKETUPDATE9NOV_H
 #include <iostream>
 #include <stdio.h>
-#include <math.h>
+#include <cmath>
 #include <iterator>
 #include <vector>
 #include <complex>
 
-double pi = 3.14159265359;
 
+double exitPressure(double y);
 
+double exitMachNumber(double y);
 
-double fuel_mass(double r, double h) {
-    double paraffin_d = 900; // kg / m3\n
-    return (pi * pow(r,2) * h) * paraffin_d; // pi * r ^ 2 * h * paraffin density     // should be changed to
-}
+double areaMachNumberRelation(double y, double m, double ratio);
 
-double fuel_effective_grain_area(double r,double h){
-    return 2*pi * r * h;//A = pi * r ^ 2     // isnt right 2Pi R1 H
-}
+double AM_EQN(double y, double m, double ratio);
 
-//Solving for Pe using the Newton-Raphson method
-// PROBLEM IS IN THIS FUNCTION RESULTING IN NAN VALUES AT e = 2 problem is pr goes negative and pow cannot go to a negative number
-std::complex<double> Pe(double E, double gm1, std::complex <double> pr, double g, double gp1, double gm1g){
-    // Calculate the exit pressure ratio from the given formula
-   //return 1.0 / E - pow((gp1 / 2.0),(1.0 / gm1)) * pow(pr,(1.0 / g)) * sqrt(complex<double>(gp1 / gm1) * (1.0 - (pow(pr,gm1g))));
-    // Check if pr is non-negative before performing calculations
-   /* if (pr < 0) {
-        // Handle the case when pr is negative to avoid complex results
-        return std::nan("Invalid input");
-    }*/
+double hybrid_rocket_thrust(double r, double L, double OF, double MOL , double y, int pressure) {
 
-    // Calculate the exit pressure ratio from the given formula
-    return 1.0 / E - pow((gp1 / 2.0), (1.0 / gm1)) * pow(pr, (1.0 / g)) * std::sqrt(std::complex<double>(gp1 / gm1) * (1.0 - pow(pr, gm1g)));
-}
+    // # equations from Rocket Propulsion Elements unless otherwise stated
 
-std::complex<double> dPe(double E, double gm1, std::complex <double> pr, double g, double gp1,double gm1g) {
-// Calculate the numerical approximation of the derivative of the exit pressure ratio with respect to pressure ratio
+    //initializing thrust to zero
+    double Thrust = 0;
 
-// step size for numerical approximation
-    double step = pow(10, -8);
+    // -------------------------------Calculating Mdot propellant mass flow rate------------------------//
 
-// approximates the slope of the function at the point (pr, Pe(pr))
-    std:: complex<double> numerator = Pe(E, gm1, pr + step, g, gp1, gm1g) - Pe(E, gm1, pr, g, gp1, gm1g); // bruh this is messed up hfuehgfouwehfoewhfoewhfouwehfuoewhfuoewhfuowehfwouefhouwehfwuoefhewuohfewuof
-    std:: complex<double> denominator = step;
+    // from Hybrid Rocket Fuel Regression Rate Data and Modeling
+    // # regression rate coefficient of
+    double a = 0.488;
 
-    // if the denominator = 0, set it to a small value
-    if (abs(denominator) < 1e-10) {
-        denominator = 1e-10;
+    // from Hybrid Rocket Fuel Regression Rate Data and Modeling
+    // # regression rate pressure
+    double n = 0.62;
+
+    ///? forgot where from ask
+    // # Oxidizer Flow Rate (O2)
+    double mDot_o = 0.01429;
+
+    ///? forgot where from ask
+    // # fuel density of parrafin kg/m^3
+    int Pf = 900;
+
+    // #  Combustion port surface area: L = port length  R = inner radius
+    double A_f = 2 * M_PI * r * L;
+
+    // # Oxidizer mass velocity (16-2)
+    double G_o = mDot_o / M_PI * pow(r,2);
+
+    // # Regression rate (16-10)
+    double rdot = a * pow(G_o,n);
+
+    // # Mass Flow Rate of Fuel (16 - 11)
+    double mDot_f = Pf * A_f * rdot;
+
+    // # Mass Flow Rate (6-2)
+    double mDot = mDot_o + mDot_f;
+
+    // -------------------------------Calculating Ve Exit velocity------------------------------------//
+
+        // # Gas constant
+        double R = 8.3144598; // J / mol * K
+
+        // # absolute temperature at nozzle inlet
+        double T1 = 1528.6;
+
+        // # specific heat ratios
+        double k = 1.2983;
+
+        // # chamber pressure
+        double Pc = pressure;
+
+        /// # Convert Bar to Pa do I need this ????
+        // Pc = Pc * 100000;
+
+        // # exit pressure
+        double Pe = exitPressure(y);  ///?
+
+        // # Calculate the exit velocity
+        double v_e =  sqrt(( ( 2*k )/( k-1 ) ) * (R*T1) * (1.0 - pow((Pe / Pc), ( (k-1)/k ))));
+
+        // # Calculate the rocket thrust from Space-Propulsion-Analysis-and-Design-McGraw-Hill-(1995
+        Thrust = mDot * v_e;
+
+        // # Return the calculated thrust
+        return Thrust;
     }
 
-    return numerator / denominator;
+double exitPressure(double y) {
+
+    // # y = specific heat ratio gamma
+
+    // # solve exit mach number
+    double Me = exitMachNumber(y);
+
+    // # return Pratio
+    return 1 + pow((((y - 1)/2) * pow(Me,2)), (-y/(y-1)));
 }
 
-std::complex <double> pratio(double kappa, double E){
+// # calculate the exitMachNumber
+double exitMachNumber(double y) {
+   /// current issue: iterations dont reach below zero so no roots are ever found
+    // # area ratio between any area of the nozzle over the throat: NASA area ratio - A/*A
+    // # A/A* = {[(gam+1)/2]^-[(gam+1)/(gam-1)/2]} / M * [1 + M^2 * (gam-1)/2]^[(gam+1)/(gam-1)/2]
+    // # assumed 1 for this test
+    double aRatio = 1;
+    double dM = 0.1;
+    double M = 1e-6;
+    double iConvSub = 0;
+    double iterMax = 100;
+    double stepMax = 100;
 
-    double gm1 = kappa - 1.0;
-    double gp1 = kappa + 1.0;
-    double gm1g = gm1 / kappa;
-    double g = kappa;
+    for (int i = 0; i <= iterMax; i++) {
+        double fj = AM_EQN(y, M, aRatio);
+        double fjp1 = AM_EQN(y, M + dM, aRatio);
 
-// # Set initial conditions
-    std::complex <double> pr0 = 0.001; // # Initial guess for the pressure ratio
-    double Err = 0.1;  // # Initial error
-    std:: complex <double> pr = 0.0; // # Initial pressure ratio
-
-// # Iterate until the desired accuracy is achieved
-    int i = 0;
-    while (Err > 0.0001) {
-// # Calculate the pressure ratio using Newton-Raphson method
-        pr = pr0 - Pe(E, gm1, pr0, g, gp1, gm1g) / dPe(E, gm1, pr0, g, gp1, gm1g);// # Newton - Raphson method x(n + 1) = x(n) - f(x(n)) / f'(x(n))
-        Err = abs((pr - pr0) / pr0);
-        pr0 = pr;
-        i += 1;
-    }
-
-// # print("Solution of nonlinear equation for Pressure ratio:", pr, "after", i, "iterations")
-    return pr;
-}
-
-std::complex <double> hybrid_rocket_thrust(double r, double h, const std::vector<double>& OF, std::vector<double>& MOL , std::vector<double>& Gammas, int pressure,int expansionRatio) {
-
-// # Fuel Mass
-    double m_f = fuel_mass(r, h); // useless?????????????
-    double Pc = pressure; //pressure ratio
-    std::complex<double> Thrust = 0;
-
-    double R = 8.3144598; // # J / mol * K
-
-// # Molecular Weights
-    double MW_fuel = 352;      // # g / mol, molecular weight of fuel(paraffin)
-    double MW_oxidizer = 32;   // # g / mol, molecular weight of oxidizer(O2)
-
-// # Oxidizer Flow Rate (O2)
-    double m_o = 0.01429;
-
-// # Mass flux oxidizer (total)
-    double j_m = (m_o) / (pi * pow(r,2));
-
-// # Regression rate
-    double rdot = 0.304 * pow(j_m,0.527);
-
-// # Area of the fuel grain
-    double A_f = fuel_effective_grain_area(r,h);
-
-// # Fuel Mass Flow Rate
-    double mdot_f = 900 * A_f * rdot;
-
-// # Mass Flow Rate
-    std::complex <double> mdot_total = m_o + mdot_f;
-
-// # Oxidizer to Fuel Ratio
-    double OF_ratio = m_o / m_f; // useless???
-
-    for (int i = 0; i<8; i++) {
-        double t = OF[i];
-        double k = Gammas[i];
-        double m = MOL[i];
-
-// # Convert Bar to Pa
-        double Pc_Pa = Pc * 100000;
-
-// # Area of the throat: Based on isentropic relations, assumes flow is choked
-    std::complex <double> A_t = mdot_total / Pc_Pa * sqrt(8.314 * t / pow((k * 2 / (k + 1)), ((k + 1) / (k - 1)))); // # from rocket propulsion elements fig 3 - 5
-
-// # Calculating the mass fraction of paraffin and o2
-        double m_frac_paraffin = MW_fuel/(MW_fuel + MW_oxidizer);
-        double m_frac_o2 = MW_oxidizer / (MW_oxidizer + MW_fuel);
-
-// # Calculating average molecular weight
-        double ave_mol_wt = (m_frac_paraffin * MW_fuel) + (m_frac_o2 * MW_oxidizer);
-
-// # Using the ideal gas law to find the density of the mixture
-        double rho_mixture = (Pc_Pa * ave_mol_wt) / (8.314 * t);
-        double rho_oxidizer = (Pc_Pa * MW_oxidizer) / (8.314 * t); // possibly useless??
-
-// # Flow velocity: V = m_dot / (rho * A)
-    std::complex <double> V = mdot_total * (rho_mixture * A_t);
-
-// # Speed of sound
-        double a = sqrt(k * 8.314 * t);
-
-// # Mach Number
-    std::complex <double> M = V / a; // uselesss
-
-//  # Exit Pressure Ratio
-        std:: complex<double> Pe = pratio(k, expansionRatio);
-
-// # Calculate the exit velocity
-    std::complex <double> v_e = sqrt((t * 8.3144598) / m) * sqrt(((2 * k) / (k - 1))) * (1.0 - pow((Pe / Pc_Pa), ((k - 1) / k))); // double check correclty incoded
-
-// # Calculate the rocket thrust
-       Thrust = mdot_total * v_e;
-    // # Return the calculated thrust
-
-    return Thrust;
-
-             }
+        for (int j = 0; j <= stepMax; j++) {
+            if (fj * fjp1 > 0) {
+                M = M + dM;
+            } else if (fj * fjp1 < 0) {
+                dM = dM * 0.1;
+            }
         }
 
+        if (fabs(fj - fjp1) <= iConvSub) { // Adjust tolerance as needed
+            iConvSub = i;
+        }
+    }
+
+    /// maybe needs to be float?
+    double Msub = M;
+    return Msub;
+}
+
+// # return estimated area mach number relation to find ideal exit Mach number
+double AM_EQN(double y, double M, double aRatio) {
+    return ( (1/pow(M,2)) * pow (( (2/(y-1)) * ( 1 + ((y-1)/2) * pow(M,2)))  ,  ((y+1) / (y-1)) ) - pow(aRatio,2) );
+}
 
 
 #endif //UNTITLED4_HYBRIDROCKETUPDATE9NOV_H
