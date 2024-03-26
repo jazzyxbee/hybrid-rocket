@@ -13,13 +13,72 @@
 #include <complex>
 
 
-double exitPressure(double y);
 
-double exitMachNumber(double y);
+double function(double M, double y, double aRatio) {
+    return (1 / pow(M, 2)) * pow(((2 / (y - 1)) * (1 + ((y - 1) / 2) * pow(M, 2))), ((y + 1) / (y - 1))) - pow(aRatio, 2);
+}
 
-double areaMachNumberRelation(double y, double m, double ratio);
+double derivative(double M, double y) {
+    double term1 = -2 * (y + 1) / ((y - 1) * M * M * M);
+    double term2 = (y + 1) / (y - 1);
+    double term3 = (1 + (y - 1) * M * M / 2);
+    double term4 = (2 / (y - 1)) * (1 + (y - 1) * M * M / 2);
 
-double AM_EQN(double y, double m, double ratio);
+    return term1 * pow(term2 * term3, term4);
+}
+
+double newtonRaphson(double y, double aRatio, double initial_guess, double tolerance, int max_iterations) {
+    double M = initial_guess;
+    int iterations = 0;
+
+    while (iterations < max_iterations) {
+        double f = function(M, y, aRatio);
+        double f_prime = derivative(M, y);
+        double delta_M = -f / f_prime;
+
+        M += delta_M;
+
+        if (fabs(delta_M) < tolerance) {
+            return M;
+        }
+
+        iterations++;
+    }
+
+    // If we reach here, the method did not converge
+    return NAN; // Not a Number
+}
+
+double exitPressure(double y) {
+
+    // # y = specific heat ratio gamma
+
+    // # solve exit mach number
+    double aRatio = 3;
+    double initial_guess = 4; // Initial guess for M
+    double tolerance = 1e-6;  // Tolerance for convergence
+    int max_iterations = 100; // Maximum iterations
+
+    double root1 = newtonRaphson(y, aRatio, initial_guess, tolerance, max_iterations);
+    double root2 = newtonRaphson(y, aRatio, -initial_guess, tolerance, max_iterations);
+
+    if (root1 != NAN) {
+        printf("Root 1: %lf\n", root1);
+    } else {
+        printf("Root 1 not found.\n");
+    }
+
+    if (root2 != NAN) {
+        printf("Root 2: %lf\n", root2);
+    } else {
+        printf("Root 2 not found.\n");
+    }
+
+    double Me = root1;
+
+    // # return Pratio = exit pressure as inside pressure is assumed p0 = 1
+    return 1 + pow((((y - 1) / 2) * pow(Me, 2)), (-y / (y - 1)));
+}
 
 double hybrid_rocket_thrust(double r, double L, double OF, double MOL, double y, int pressure) {
 
@@ -35,16 +94,14 @@ double hybrid_rocket_thrust(double r, double L, double OF, double MOL, double y,
     // # regression rate pressure
     double n = 0.62;
 
-    ///? forgot where from ask
     // # Oxidizer Flow Rate (O2)
     double mDot_o = 0.01429;
 
-    ///? forgot where from ask
     // # fuel density of parrafin kg/m^3
     int Pf = 900;
 
-    // #  Combustion port surface area: L = port length  R = inner radius
-    double A_f = 2 * M_PI * r * L;   /// can I use R here or does r represent the radius of the throat
+    // #  Combustion port surface area: L = port length  r = radius of fuel grain
+    double A_f = 2 * M_PI * r * L;
 
     // # Oxidizer mass velocity (16-2)
     double G_o = mDot_o / M_PI * pow(r, 2);
@@ -57,9 +114,6 @@ double hybrid_rocket_thrust(double r, double L, double OF, double MOL, double y,
 
     // # Mass Flow Rate (6-2)
     double mDot = mDot_o + mDot_f; /// too small?
-
-    // # Oxidizer fuel ratio
-    double OF_ratio = mDot_o;/// maybe dont need
 
     // -------------------------------Calculating Ve Exit velocity------------------------------------//
 
@@ -78,8 +132,11 @@ double hybrid_rocket_thrust(double r, double L, double OF, double MOL, double y,
     /// # Convert Bar to Pa do I need this ????
    // Pc = Pc * 100000;
 
+    // # Appendix 2 PROPERTIES OF THE EARTH’S STANDARD ATMOSPHERE with idealised flow p2 = p3
     // # exit pressure
-    double Pe = exitPressure(y);  ///?
+    double Pe =  0.88700;    /// produces 31.5269 seems resonable
+
+            /// exitPressure(y);  unsure if a method is required yet while we are still in the design process
 
     // # Calculate the exit velocity
     double v_e = sqrt(((2 * k) / (k - 1)) * (R * T1) * (1.0 - pow((Pe / Pc), ((k - 1) / k))));
@@ -90,57 +147,4 @@ double hybrid_rocket_thrust(double r, double L, double OF, double MOL, double y,
     // # Return the calculated thrust
     return Thrust;
 }
-
-double exitPressure(double y) {
-
-    // # y = specific heat ratio gamma
-
-    // # solve exit mach number
-    double Me = exitMachNumber(y);
-
-    // # return Pratio = exit pressure as inside pressure is assumed p0 = 1
-    return 1 + pow((((y - 1) / 2) * pow(Me, 2)), (-y / (y - 1)));
-}
-
-// # calculate the exitMachNumber
-double exitMachNumber(double y) {
-    /// current issue: iterations dont reach below zero so no roots are ever found
-    // # area ratio between any area of the nozzle over the throat: NASA area ratio - A/*A
-    // # A/A* = {[(gam+1)/2]^-[(gam+1)/(gam-1)/2]} / M * [1 + M^2 * (gam-1)/2]^[(gam+1)/(gam-1)/2]
-    // # assumed 1 for this test
-    double aRatio = 1;   /// this is wrong it cant be one
-    double dM = 0.1;
-    double M = 1e-4;
-    double iConvSub = 0.0001;
-    double iterMax = 100;
-    double stepMax = 100;
-
-    for (int i = 0; i <= iterMax; i++) {
-        double fj = AM_EQN(y, M, aRatio);
-        double fjp1 = AM_EQN(y, M + dM, aRatio);
-
-        for (int j = 0; j <= stepMax; j++) {
-            if (fj * fjp1 > 0) {
-                M = M + dM;
-            } else if (fj * fjp1 < 0) {
-                dM = dM * 0.1;
-            }
-        }
-        if (fabs(fj - fjp1) <= iConvSub) { // Adjust tolerance as needed
-            iConvSub = i;
-        }
-    }
-
-    /// maybe needs to be float?
-    //return mach number root
-    return M;
-}
-
-// # return estimated area mach number relation to find ideal exit Mach number
-double AM_EQN(double y, double M, double aRatio) {
-    return ((1 / pow(M, 2)) * pow(((2 / (y - 1)) * (1 + ((y - 1) / 2) * pow(M, 2))), ((y + 1) / (y - 1))) -
-            pow(aRatio, 2));
-}
-
-
 #endif //UNTITLED4_HYBRIDROCKETUPDATE9NOV_H
