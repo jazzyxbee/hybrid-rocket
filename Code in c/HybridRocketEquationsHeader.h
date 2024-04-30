@@ -11,138 +11,113 @@
 #include <iterator>
 #include <vector>
 #include <complex>
-
-
-
-double function(double M, double y, double aRatio) {
-    return (1 / pow(M, 2)) * pow(((2 / (y - 1)) * (1 + ((y - 1) / 2) * pow(M, 2))), ((y + 1) / (y - 1))) - pow(aRatio, 2);
+double Pe(double E, double gm1, double pr, double g, double gp1, double gm1g)
+{
+    double ff1; ///why ff1?
+    ff1=1.0/E-pow((gp1/2.0),(1.0/gm1))*pow(pr,(1.0/g))*sqrt((gp1/gm1)*(1.-pow(pr,gm1g)));
+    return ff1;
 }
 
-double derivative(double M, double y) {
-    double term1 = -2 * (y + 1) / ((y - 1) * M * M * M);
-    double term2 = (y + 1) / (y - 1);
-    double term3 = (1 + (y - 1) * M * M / 2);
-    double term4 = (2 / (y - 1)) * (1 + (y - 1) * M * M / 2);
-
-    return term1 * pow(term2 * term3, term4);
+double dPe(double E, double gm1, double pr, double g, double gp1, double gm1g)
+{
+    /// how does this work ? how does dividing by 10^-8 result in the de
+    double dPe1;
+    double h=pow(10,-8.);
+    dPe1=(Pe(E,gm1,pr+h,g,gp1,gm1g)-Pe(E,gm1,pr,g,gp1,gm1g))/h;
+    return dPe1;
 }
 
-double newtonRaphson(double y, double aRatio, double initial_guess, double tolerance, int max_iterations) {
-    double M = initial_guess;
-    int iterations = 0;
+double pratio (double kappa,double E) {
+    //using newton raphson and (eq 3-25) from propulsion elements
+    double gm1 = kappa - 1.0; /// why gm1 and gm1g?
+    double gp1 = kappa + 1.0;
+    double gm1g = (kappa - 1.0) / kappa;
+    double g = kappa;
+    double pr0=0.001;
+    double Err=0.1;
+    double pr;
 
-    while (iterations < max_iterations) {
-        double f = function(M, y, aRatio);
-        double f_prime = derivative(M, y);
-        double delta_M = -f / f_prime;
+    int i=0;
 
-        M += delta_M;
+    //printf("Solution of nonlinear equation for Pressure ratio :");
+    do
+    {
+        pr=pr0-Pe(E,gm1,pr0,g,gp1,gm1g)/dPe(E,gm1,pr0,g,gp1,gm1g);
+        Err=fabs((pr-pr0)/pr0);
+        pr0=pr;
+        i=i+1;
+        //printf("Pratio0 = %lf ,",pr0);
+    }while(Err>0.0001);
+    //printf("Solution = %lf , after ",pr0);
+    //printf("%d iterations \n",i);
 
-        if (fabs(delta_M) < tolerance) {
-            return M;
-        }
-
-        iterations++;
-    }
-
-    // If we reach here, the method did not converge
-    return NAN; // Not a Number
+    //printf("%lf \n",pr);
+    return pr;
 }
 
-double exitPressure(double y) {
-
-    // # y = specific heat ratio gamma
-
-    // # solve exit mach number
-    double aRatio = 3;
-    double initial_guess = 4; // Initial guess for M
-    double tolerance = 1e-6;  // Tolerance for convergence
-    int max_iterations = 100; // Maximum iterations
-
-    double root1 = newtonRaphson(y, aRatio, initial_guess, tolerance, max_iterations);
-    double root2 = newtonRaphson(y, aRatio, -initial_guess, tolerance, max_iterations);
-
-    if (root1 != NAN) {
-        printf("Root 1: %lf\n", root1);
-    } else {
-        printf("Root 1 not found.\n");
-    }
-
-    if (root2 != NAN) {
-        printf("Root 2: %lf\n", root2);
-    } else {
-        printf("Root 2 not found.\n");
-    }
-
-    double Me = root1;
-
-    // # return Pratio = exit pressure as inside pressure is assumed p0 = 1
-    return 1 + pow((((y - 1) / 2) * pow(Me, 2)), (-y / (y - 1)));
-}
-
-double hybrid_rocket_thrust(double r, double L, double OF, double MOL, double y, int pressure) {
-
+double hybrid_rocket_thrust(double RI, double L, double T, double MOL, double kappa, double Pc, int E, double mDot_o) {
+    // # kappa is specific heat ratios
+    // # T is chamber temperature as a result of chemical reaction
+    // # e is expansion ratio
+    // # mDot_o is oxidizer flow rate
     // # equations from Rocket Propulsion Elements unless otherwise stated
+
 
     // -------------------------------Calculating Mdot propellant mass flow rate------------------------//
 
-    // from Hybrid Rocket Fuel Regression Rate Data and Modeling
-    // # regression rate coefficient of
-    double a = 0.488;
+    // Mdot variables
+    //double a = 0.488;  // # regression rate coefficient of parrafin mm/s from Hybrid Rocket Fuel Regression Rate Data and Modeling
+    //double n = 0.62; // # regression rate pressure from Hybrid Rocket Fuel Regression Rate Data and Modeling
+    //int Pf = 900; // # fuel density of parrafin kg/m^3
+    double A_b      = 0; // #  Combustion port surface area: L = port length  RI = internal radius of fuel grain (16-11)
+    double G_o      = 0; // # Oxidizer mass velocity (16-2) gm/cm2 hence change RI to centimeters and mDot from kg to gm
+    double rDot     = 0; // # Regression rate (16-10)
+    double mDot_f   = 0; // # Mass Flow Rate of Fuel (16 - 11) kg/sec
+    double mDot     = 0; // # Mass Flow Rate (6-2)
+    double mixRatio = 0; // # mixture ratio
 
-    // from Hybrid Rocket Fuel Regression Rate Data and Modeling
-    // # regression rate pressure
-    double n = 0.62;
+    //V_e variables
+    double R = 8.3144598; // # Gas constant J / mol * K
+    double Pe = 0;  // # exit pressure from hybrid-rocket/Reference_code/program_2.c
+    float v_e = 0; // # Calculate the exit velocity
+    double c = 0;// # effective exit velocity equation (1.8)
+    double Thrust = 0; // # Calculate the rocket thrust from Space-Propulsion-Analysis-and-Design-McGraw-Hill-(1995)
+    double Pa = 0; //Pascals
 
-    // # Oxidizer Flow Rate (O2)
-    double mDot_o = 0.01429;
+    /// amroc confirmation
+    double a = 0.304;  // HTPB regression rate for amroc conformation
+    double n = 0.527;
+    int Pf = 920; // HTPB density
 
-    // # fuel density of parrafin kg/m^3
-    int Pf = 900;
+    A_b = 2 * M_PI * RI * L; // meters squared   currently 6.165393 m^2
 
-    // #  Combustion port surface area: L = port length  r = radius of fuel grain
-    double A_f = 2 * M_PI * r * L;
+    G_o = (mDot_o*1000) / (M_PI * pow(RI*100, 2)); /// validated
 
-    // # Oxidizer mass velocity (16-2)
-    double G_o = mDot_o / M_PI * pow(r, 2);
+    rDot = a * pow(G_o, n); // millimeters per second
 
-    // # Regression rate (16-10)
-    double rdot = a * pow(G_o, n);/// suspiciously small
+    mDot_f = Pf * A_b * rDot/1000; // divide by 1000 for meters per second for rdot (unit validation kg/m^3 * m^2 * m/s)
 
-    // # Mass Flow Rate of Fuel (16 - 11)
-    double mDot_f = Pf * A_f * rdot;
+    mixRatio = mDot_o/mDot_f;
 
-    // # Mass Flow Rate (6-2)
-    double mDot = mDot_o + mDot_f; /// too small?
+    mDot = mDot_o + mDot_f;
 
     // -------------------------------Calculating Ve Exit velocity------------------------------------//
 
-    // # Gas constant
-    double R = 8.3144598; // J / mol * K
+    Pe = Pc*pratio(kappa,E); // about 3393 pa
+    double result = T/MOL;
+    v_e = sqrt(((2 * kappa) / (kappa - 1)) * (R * T) * (1.0 - pow((Pe / Pc), ((kappa - 1) / (kappa))))); // =770.9 ms^2 validated 3.3. ISENTROPIC FLOW THROUGH NOZZLES PG 55
 
-    // # absolute temperature at nozzle inlet
-    double T1 = 1528.6;
+    //c = v_e + ((Pe - Pa)*Ae)/mDot; /// attempted but just gives number of like 433000 which is way too large and Isp of 2000
 
-    // # specific heat ratios
-    double k = 1.2983;
+    /// maybe need to add ((Pe - Pa)*Ae)/mDot or characteristec velocity??
+    Thrust = mDot * v_e ;
 
-    // # chamber pressure
-    double Pc = pressure;
+    // calculate specifc impulse
+    double Ip = v_e/(9.81);  /// currently 50 which is way too low and should be 280 - 350 so Ip should be 11.6 times larger
 
-    /// # Convert Bar to Pa do I need this ????
-   // Pc = Pc * 100000;
-
-    // # Appendix 2 PROPERTIES OF THE EARTH’S STANDARD ATMOSPHERE with idealised flow p2 = p3
-    // # exit pressure
-    double Pe =  0.88700;    /// produces 31.5269 seems resonable
-
-            /// exitPressure(y);  unsure if a method is required yet while we are still in the design process
-
-    // # Calculate the exit velocity
-    double v_e = sqrt(((2 * k) / (k - 1)) * (R * T1) * (1.0 - pow((Pe / Pc), ((k - 1) / k))));
-
-    // # Calculate the rocket thrust from Space-Propulsion-Analysis-and-Design-McGraw-Hill-(1995
-    double Thrust = mDot * v_e;
+    printf( "velocity %f\n",v_e) ;
+    printf("Specific impulse V_e: %f \n", Ip);
+    printf("Thrust : %f \n", Thrust);
 
     // # Return the calculated thrust
     return Thrust;
