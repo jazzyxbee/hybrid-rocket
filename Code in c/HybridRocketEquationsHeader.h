@@ -10,7 +10,7 @@
 #include <cmath>
 #include <iterator>
 #include <vector>
-#include <complex>
+
 double Pe(double E, double gm1, double pr, double g, double gp1, double gm1g)
 {
     double ff1; ///why ff1?
@@ -62,64 +62,42 @@ double hybrid_rocket_thrust(double RI, double L, double T, double MOL, double ka
     // # mDot_o is oxidizer flow rate
     // # equations from Rocket Propulsion Elements unless otherwise stated
 
-
     // -------------------------------Calculating Mdot propellant mass flow rate------------------------//
-
     // Mdot variables
-    //double a = 0.488;  // # regression rate coefficient of parrafin mm/s from Hybrid Rocket Fuel Regression Rate Data and Modeling
-    //double n = 0.62; // # regression rate pressure from Hybrid Rocket Fuel Regression Rate Data and Modeling
-    //int Pf = 900; // # fuel density of parrafin kg/m^3
+    double a = 0.488;  // # regression rate coefficient of parrafin mm/s from Hybrid Rocket Fuel Regression Rate Data and Modeling
+    double n = 0.62; // # regression rate pressure from Hybrid Rocket Fuel Regression Rate Data and Modeling
+    int Pf = 900; // # fuel density of parrafin kg/m^3
     double A_b      = 0; // #  Combustion port surface area: L = port length  RI = internal radius of fuel grain (16-11)
     double G_o      = 0; // # Oxidizer mass velocity (16-2) gm/cm2 hence change RI to centimeters and mDot from kg to gm
     double rDot     = 0; // # Regression rate (16-10)
     double mDot_f   = 0; // # Mass Flow Rate of Fuel (16 - 11) kg/sec
     double mDot     = 0; // # Mass Flow Rate (6-2)
-    double mixRatio = 0; // # mixture ratio
 
-    //V_e variables
-    double R = 8.3144598; // # Gas constant J / mol * K
-    double Pe = 0;  // # exit pressure from hybrid-rocket/Reference_code/program_2.c
-    float v_e = 0; // # Calculate the exit velocity
-    double c = 0;// # effective exit velocity equation (1.8)
-    double Thrust = 0; // # Calculate the rocket thrust from Space-Propulsion-Analysis-and-Design-McGraw-Hill-(1995)
-    double Pa = 0; //Pascals
+    A_b = 2 * M_PI * RI * L; // meters squared
 
-    /// amroc confirmation
-    double a = 0.304;  // HTPB regression rate for amroc conformation
-    double n = 0.527;
-    int Pf = 920; // HTPB density
-
-    A_b = 2 * M_PI * RI * L; // meters squared   currently 6.165393 m^2
-
-    G_o = (mDot_o*1000) / (M_PI * pow(RI*100, 2)); /// validated
-
+    G_o = (mDot_o*1000) / (M_PI * pow((RI*100), 2));  //  gm/cm s
     rDot = a * pow(G_o, n); // millimeters per second
-
-    mDot_f = Pf * A_b * rDot/1000; // divide by 1000 for meters per second for rdot (unit validation kg/m^3 * m^2 * m/s)
-
-    mixRatio = mDot_o/mDot_f;
-
+    mDot_f = (Pf * A_b * rDot/1000);/// kg/m^3 * m^2 * m/s
     mDot = mDot_o + mDot_f;
 
     // -------------------------------Calculating Ve Exit velocity------------------------------------//
 
-    Pe = Pc*pratio(kappa,E); // about 3393 pa
-    double result = T/MOL;
-    v_e = sqrt(((2 * kappa) / (kappa - 1)) * (R * T) * (1.0 - pow((Pe / Pc), ((kappa - 1) / (kappa))))); // =770.9 ms^2 validated 3.3. ISENTROPIC FLOW THROUGH NOZZLES PG 55
+    double R = 8314.41; // # Gas constant J / kmol * K
+    double Pe = 0;  // # exit pressure from hybrid-rocket/Reference_code/program_2.c
+    double v_e = 0; // # Calculate the exit velocity
+    double Thrust = 0; // # Calculate the rocket thrust from Space-Propulsion-Analysis-and-Design-McGraw-Hill-(1995)
 
-    //c = v_e + ((Pe - Pa)*Ae)/mDot; /// attempted but just gives number of like 433000 which is way too large and Isp of 2000
+    Pe = Pc*pratio(kappa,E);
+    v_e = sqrt((2 * kappa * R * T) / ((kappa - 1)*MOL) * (1.0 - pow((Pe / Pc), ((kappa - 1) / (kappa)))));
+    Thrust = mDot * v_e;
 
-    /// maybe need to add ((Pe - Pa)*Ae)/mDot or characteristec velocity??
-    Thrust = mDot * v_e ;
+    double Ip = v_e/9.81;
 
-    // calculate specifc impulse
-    double Ip = v_e/(9.81);  /// currently 50 which is way too low and should be 280 - 350 so Ip should be 11.6 times larger
-
+    /* variables can be printed here
     printf( "velocity %f\n",v_e) ;
     printf("Specific impulse V_e: %f \n", Ip);
-    printf("Thrust : %f \n", Thrust);
+    */
 
-    // # Return the calculated thrust
     return Thrust;
 }
 #endif //UNTITLED4_HYBRIDROCKETUPDATE9NOV_H
