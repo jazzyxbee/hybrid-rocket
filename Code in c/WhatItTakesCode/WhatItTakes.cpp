@@ -102,8 +102,8 @@ int main() {
 
             m = m0 - mDot * t; //Rocket mass
             psi_dot = 0; // rate of change of psi
-            Dv_dtY = ((thrustY - dragY) / m) + g; // acceleration
-            Dv_dtX = ((thrustX - dragX) / m); // acceleration
+            Dv_dtY = ((T - dragY) / m) + g; // acceleration
+            //Dv_dtX = ((thrustX - dragX) / m); // acceleration
             theta_dot = 0; // rate of change of angle relative to Earths centre
             h_dot = v; // change in height
 
@@ -116,7 +116,7 @@ int main() {
 
             phi_dot = g * sin(psi) / v;  //
             Dv_dtY = ((thrustY - dragY) / m) - g * cos(psi);
-            Dv_dtX = ((thrustX - dragX) / m); // acceleration
+            //Dv_dtX = ((thrustX - dragX) / m); // acceleration
             h_dot = -v * cos(psi);
             theta_dot = v * sin(psi) / (Re + h);
             psi_dot = phi_dot - theta_dot;
