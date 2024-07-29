@@ -13,150 +13,139 @@ double rad2deg(double radians) {
     return radians * 180.0 / M_PI;
 }
 
-std::array<double,4>derivitives(double t,double y0,double y1,double y2,double y3,double y4){
-        double diam=0;//rocketdiameter
-        double A=M_PI/(4*pow(diam,2));//m^2frontalarea
-        double h=0;
-        double g0=9.81;
-        double rho= 1.293;
-        double rho0=0;
-        double Re=6371000;
-        double D=0;
-        double CD=0.5;
-        double hscale=1;
-        double hturn=30;
-        double psi_dot=0;
-        double v_dot=0;
-        double theta_dot=0;
-        double phi_dot=0;
-        double h_dot=0;
-        double tburn=2.5;
-        double thrust=15;
-        double m=0;
-
-        double v = y0;
-        double psi = y1;
-        double theta = y2;
-            h=y3;
-            //determinegravityanddrag
-            double g=g0/pow((1+h/Re),2);
-            rho=rho0*exp(-h/hscale);
-            D=0.5*rho*pow(v,2)*A*CD;
-
-            if(tburn<t){
-           //Computethederivativeofvattimet
-                double m = 0.05-0.002*t;//Rocketmass
-
-           //thrust=thrust
-            }else{
-                m = 0.05-0.002 * tburn;//Rocketmassoncefullhasallbeenburnt
-                thrust=0;
-            }
-
-            if(h<=hturn){
-                psi_dot=0;
-                v_dot=thrust/m-D/m-g;
-            theta_dot=0;
-            h_dot=v;
-        }else{
-            phi_dot=g*sin(psi)/v;
-            v_dot=thrust/m-D/m-g*cos(psi);
-            h_dot=v*cos(psi);
-            theta_dot=v*sin(psi)/(Re+h);
-            psi_dot=phi_dot-theta_dot;
-        }
-
-        return{v_dot,psi_dot,theta_dot,h_dot};
-}
-
 int main() {
     // Initial parameters
-    // Using example values from https://www.youtube.com/watch?v=NFhiJWbNU1g&t=1856s
-    double m = 0;
-    double m0 = 0.05; //inital mass kg
-    double mDot = 0.002;  // kg/sec mass flow rate
-    double fuelAt1Sec = 0.048; //kg
-    double thrust = 15; // Netwons
-    double K = 0.02; // drag co=efficient
-    double g = -9.81;
-    double tburn = 1;
-    double rho= 1.293; // density of air kg/m^3
-    double radius = 0.5; // meters
-    double A  = M_PI * pow(radius,2); // area of the nose (frontal portion)
+    // Using example values from https://www.youtube.com/watch?v=22OCPbfY5SE&t=616s
+    double T = 0.0;
+    double m = 0.0; // initial mass
+    double mprop = 111130.0; // kg propellent mass
+    double mpl = 32000.0; // kg payload mass
+    double mstruc = 6736.0; // kg structure mass
+    double m0 = mprop + mpl + mstruc; // initialmass
+    double tburn = 356.0; // burn time (s)
+    double mDot =  mprop/tburn; // kg/s propellent mass flow rate
+    double thrust = 1900000.0; // Netwons
 
-    double t = 0; // seconds
-    double v = 0; // meters per second
-    double y = 0; // vertical position in meters
-    double pitch = 90; // starts at 90 degrees, straight up.
-    double pitchRate = -9.8; // gravity
+    //double hturn = 1000 // pitchover height why is this known ???
+
+    // Atmospheric Conditions
+    double CD = 0.3; // drag coefficient
+    double g0 = -9.81;
+    double g = 0.0;
+    double rho0 = 12.93; // density of air kg/m^3 at sea level
+    long double rho = 0.0; // initialising
+    double hscale = 8500.0; // m, scale of rapid atmospheric change within Earths Atmosphere
+
+    //size parameters
+    double diam = 3.05; // m rocket diameter
+    double A  = M_PI* pow((diam/2),2); // area of the nose (frontal portion)
+
+    // differential inputs
+    double t = 0.0; // seconds
+    double v = 0.0; // meters per second
+    double y = 0.0; // vertical position in meters
+    double x = 0.0; // horizontal position in meters
+
+
+    // angular parameters
+    double psi_dot = 0.0;
+    double theta_dot = 0.0;
+    double h_dot = 0.0;
+    double phi_dot = 0.0;
+    double phi = 0.0;
+    double deg = 0.0;
+    double psi0 = 0.3*deg; // rad initial flight path angle
+    double theta0 = 0.0; // rad inital downrange angle
+    double h0 = 0.0; // initial height
+    double psi = M_PI*5/6;
+    double theta = 0.0;
+    double h = 0.0;
+    double Re = 6371000.0; // radius of earth from centre to surface
 
     //solving using Eulers
-    double dt = 0.01; // time step in seconds
-    double t_end = 2.51; // end time for the simulation
+    double dt = 2; // time step in seconds
+    double t_end = 1600.0; // end time for the simulation
 
     // Open a file to write the data
     std::ofstream outfile("rocket_trajectory.csv");
-    outfile << "Time,Velocity,Position,PitchAngle\n"; // Header
+    outfile << "Time,Velocity,Distance,Height\n"; // Header
+
 
     // Euler's method loop
     while (t <= t_end) {
+        //------------------------------Determine the thrust of rocket -------------------------------------
+        // Check if the fuel is depleted and set Thrust to 0
+        T = (t <= tburn) ? thrust : 0;
 
-        if(t<=tburn){
-            // Compute the derivative of v at time t
+        //------------------------------Solving Vertical and Angular components-------------------------------------
+
+        //why do this here why not just calculate individually
+        // Calculate thrust components
+        double thrustX = T * cos(psi); // Horizontal component of thrust
+        double thrustY = T * sin(psi); // Vertical component of thrust
+
+        // Compute drag force components
+        double vx = v * cos(psi); // Horizontal velocity component
+        double vy = v * sin(psi); // Vertical velocity component
+
+        //calculating Drag and gravity
+        rho = rho0 * exp(-h/hscale);
+        printf("%Lf \n",rho);
+        g = g0 /  pow((1 + h / Re),2);
+
+        long double dragX = 0.5 * rho * pow(vx,2) * A * CD; // Horizontal component of drag
+        long double dragY = 0.5 * rho * pow(vy,2) * A * CD; // Vertical component of drag
+
+        //------------------------------Solving De's-------------------------------------
+        double Dv_dt, Dv_dtX, Dv_dtY, Dv_dtdrag;
+        if (T > 0){ // before gravity turn
+
             m = m0 - mDot * t; //Rocket mass
+            psi_dot = 0; // rate of change of psi
+            Dv_dtY = ((thrustY - dragY) / m) + g; // acceleration
+            Dv_dtX = ((thrustX - dragX) / m); // acceleration
+            theta_dot = 0; // rate of change of angle relative to Earths centre
+            h_dot = v; // change in height
 
-            // Check if Mr is very small or zero to avoid division by a small number
-            if (m <= 0.0001) {
-                std::cerr << "Mr is too small or zero at t = " << t << std::endl;
-                break;
-            }
+            //printf("no drag %f drag %f \n", Dv_dt, Dv_dtdrag);
+            //Dv_dt = (thrust - m * 9.8 - CD * pow(v,2)- v * mDot) / m; // change to drag ... K * pow(v, 2   original DE
 
-        } else {
-
-            // Check if the fuel is depleted and set Thrust to 0
-            m = m0 - mDot * tburn; //Rocket mass
-            thrust = 0;
-
-        }
-
-        //calculating Drag
-        double D = 0.5 * rho * pow(v,2) * A * K;
-
-        double Dv_dt, Dv_dtdrag;
-        // Compute the derivative of v at time t
-        if (thrust > 0){ // before gravity turn
-            Dv_dt = (thrust - m * 9.8 - D - v * mDot) / m; // change to drag ... K * pow(v, 2)
-            Dv_dtdrag = (thrust - m * 9.8 - D ) / m;
-
-            printf("no drag %f drag %f \n", Dv_dt, Dv_dtdrag);
         } else{ // after gravity turn
-            Dv_dt = (-9.8 - (K / m) * pow(v, 2));
-            Dv_dtdrag = (-9.8 - (D / m) );
+
+            m = m0 - mDot * tburn; //Rocket mass
+
+            phi_dot = g * sin(psi) / v;  //
+            Dv_dtY = ((thrustY - dragY) / m) - g * cos(psi);
+            Dv_dtX = ((thrustX - dragX) / m); // acceleration
+            h_dot = -v * cos(psi);
+            theta_dot = v * sin(psi) / (Re + h);
+            psi_dot = phi_dot - theta_dot;
+
+            //Dv_dt = ((T-dragY) / m - 9.81); // original DE
         }
 
         // Update the velocity and time using Euler's method
-        v = v + Dv_dt * dt; // velocity
-        y = y + v * dt; // height
-
-        // Check if the position has reached or gone below 0
-        if (y <= 0) {
-            v = 0;
-            y = 0;
-            Dv_dt = 0;
-        }
-
+        v = v + Dv_dtY * dt; // velocity //   v = v + (Dv_dtY + Dv_dtX) * dt; // velocity
+        x = x + Dv_dtX * dt * dt; // distance
+        y = y + Dv_dtY * dt; // height
+        h = h + h_dot * dt; // height as well but calculated differently
+        psi = psi + psi_dot * dt; // angle
+        phi_dot = phi + phi_dot * dt;
+        theta = theta + theta_dot * dt; //
         t = t + dt;
 
-        // Update pitch angle based on the velocity and height
-        if (y > 0) {
-            pitch = 90; // Gravity turn approximation but it needs proper representation
+        ///When Rocket collides
+        if (h<0){
+            h = 0;
+            break;
         }
 
+        double dr = theta * Re/1000;
         // Write current time, velocity, and position to file
-        outfile << t << "," << v << "," << y << "\n";
+        outfile << t << "," << v << "," << x << "," << h << "\n";
 
         // Output the current time, velocity, and position
-        //std::cout << "Time: " << t << " s, Velocity: " << v <<" Height: " << y << " m" << " Acceleration: " << Dv_dt << " Pitch Angle: " << pitch <<std::endl;
+        std::cout << "Time: " << t << " s, Velocity: " << v <<" Height: " << h << " m" << " Acceleration: " << Dv_dtY << " angle: " << psi*180/M_PI <<std::endl;
     }
 
     //plotting
