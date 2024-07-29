@@ -57,7 +57,7 @@ int main() {
     double psi0 = 0.3*deg; // rad initial flight path angle
     double theta0 = 0.0; // rad inital downrange angle
     double h0 = 0.0; // initial height
-    double psi = M_PI*5/6;
+    double psi = 10 * M_PI/180; //start at 10 degrees
     double theta = 0.0;
     double h = 0.0;
     double Re = 6371000.0; // radius of earth from centre to surface
@@ -81,12 +81,12 @@ int main() {
 
         //why do this here why not just calculate individually
         // Calculate thrust components
-        double thrustX = T * cos(psi); // Horizontal component of thrust
-        double thrustY = T * sin(psi); // Vertical component of thrust
+        double thrustX = T * sin(psi); // Horizontal component of thrust
+        double thrustY = T * cos(psi); // Vertical component of thrust
 
         // Compute drag force components
-        double vx = v * cos(psi); // Horizontal velocity component
-        double vy = v * sin(psi); // Vertical velocity component
+        double vx = v * sin(psi); // Horizontal velocity component
+        double vy = v * cos(psi); // Vertical velocity component
 
         //calculating Drag and gravity
         rho = rho0 * exp(-h/hscale);
@@ -97,13 +97,13 @@ int main() {
         long double dragY = 0.5 * rho * pow(vy,2) * A * CD; // Vertical component of drag
 
         //------------------------------Solving De's-------------------------------------
-        double Dv_dt, Dv_dtX, Dv_dtY, Dv_dtdrag;
+        double Dv_dtX, Dv_dtY;
         if (T > 0){ // before gravity turn
 
             m = m0 - mDot * t; //Rocket mass
             psi_dot = 0; // rate of change of psi
-            Dv_dtY = ((T - dragY) / m) + g; // acceleration
-            //Dv_dtX = ((thrustX - dragX) / m); // acceleration
+            Dv_dtY = ((thrustY - dragY) / m) + g; // acceleration
+            Dv_dtX = ((thrustX - dragX) / m); // acceleration
             theta_dot = 0; // rate of change of angle relative to Earths centre
             h_dot = v; // change in height
 
@@ -116,17 +116,18 @@ int main() {
 
             phi_dot = g * sin(psi) / v;  //
             Dv_dtY = ((thrustY - dragY) / m) - g * cos(psi);
-            //Dv_dtX = ((thrustX - dragX) / m); // acceleration
+            Dv_dtX = ((thrustX - dragX) / m); // acceleration
             h_dot = -v * cos(psi);
             theta_dot = v * sin(psi) / (Re + h);
             psi_dot = phi_dot - theta_dot;
 
-            //Dv_dt = ((T-dragY) / m - 9.81); // original DE
         }
 
         // Update the velocity and time using Euler's method
-        v = v + Dv_dtY * dt; // velocity //   v = v + (Dv_dtY + Dv_dtX) * dt; // velocity
-        x = x + Dv_dtX * dt * dt; // distance
+        v = v + sqrt(pow(Dv_dtX, 2) + pow(Dv_dtY, 2)) * dt;
+        vy = v + Dv_dtY * dt; // velocity //
+        vx =  v + Dv_dtX * dt; // velocity
+        //x = x + Dv_dtX * dt * dt; // distance
         y = y + Dv_dtY * dt; // height
         h = h + h_dot * dt; // height as well but calculated differently
         psi = psi + psi_dot * dt; // angle
