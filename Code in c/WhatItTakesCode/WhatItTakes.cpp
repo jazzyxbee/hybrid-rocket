@@ -2,6 +2,7 @@
 #include <cmath>
 #include <fstream>
 #include <array>
+#include <functional>
 
 // Function to convert degrees to radians
 double deg2rad(double degrees) {
@@ -13,145 +14,121 @@ double rad2deg(double radians) {
     return radians * 180.0 / M_PI;
 }
 
+// Function to calculate the derivatives of the system
+std::array<double, 4> derivatives(double t, double v, double h, double psi, double m, double T, double Re, double g0, double hscale, double rho0, double A, double CD, double CL, double AL) {
+    double g = g0 / pow((1 + h / Re), 2);
+    double rho = rho0 * exp(-h / hscale);
+    double drag = (1 / 2) * rho * pow(v, 2) * A * CD;
+    double lift = (1 / 2) * CL * rho * pow(v, 2) * AL;
+    double Dv_dt, h_dot, psi_dot, theta_dot;
+
+    if (h <= 1000000) { // before gravity turn currently at karman line possibly to high??
+        Dv_dt = T / m - drag / m - g;
+        h_dot = v;
+        psi_dot = 0;
+        theta_dot = 0;
+    } else { // after gravity turn
+        double phi_dot = g * sin(psi) / v; // defined here due to scope
+        Dv_dt = T / m + drag / m - g * cos(psi);
+        h_dot = v * cos(psi);
+        theta_dot = (v * sin(psi)) / (Re + h);
+        psi_dot = phi_dot - theta_dot;
+    }
+
+    return {Dv_dt, h_dot, psi_dot, theta_dot};
+}
+
+// Function to perform the RK4 method
+void rk4(double& v, double& h, double& psi, double& t, double dt, double m, double T, double Re, double g0, double hscale, double rho0, double A, double CD, double CL,double AL) {
+    // K1 beginning of the interval using Eulers method
+    // K2 the midpoint of the interval
+    // K3 again midpoint of the interval
+    // K4 end of the interval
+    // sum weighted v, h, psi, t
+
+    auto k1 = derivatives(t, v, h, psi, m, T, Re, g0, hscale, rho0, A, CD, CL, AL);
+    auto k2 = derivatives(t + dt / 2, v + k1[0] * dt / 2, h + k1[1] * dt / 2, psi + k1[2] * dt / 2, m, T, Re, g0, hscale, rho0, A, CD, CL, AL);
+    auto k3 = derivatives(t + dt / 2, v + k2[0] * dt / 2, h + k2[1] * dt / 2, psi + k2[2] * dt / 2, m, T, Re, g0, hscale, rho0, A, CD, CL, AL);
+    auto k4 = derivatives(t + dt, v + k3[0] * dt, h + k3[1] * dt, psi + k3[2] * dt, m, T, Re, g0, hscale, rho0, A, CD, CL, AL);
+
+    //middle points weighted by 1/3 and ends weighted by 1/6 to achieve 4th order accuracy
+    v += (k1[0] + 2 * k2[0] + 2 * k3[0] + k4[0]) * dt / 6.0; // yn + 1
+    h += (k1[1] + 2 * k2[1] + 2 * k3[1] + k4[1]) * dt / 6.0;
+    psi += (k1[2] + 2 * k2[2] + 2 * k3[2] + k4[2]) * dt / 6.0;
+    t += dt;
+}
+
 int main() {
+    // Based on the Titan 2 and Gemini Spacecraft
+
     // Initial parameters
-    // Using example values from https://www.youtube.com/watch?v=22OCPbfY5SE&t=616s
-    double T = 0.0;
     double m = 0.0; // initial mass
-    double mprop = 111130.0; // kg propellent mass
+    double mprop = 111130.0; // kg propellent mass 111130.0
     double mpl = 32000.0; // kg payload mass
     double mstruc = 6736.0; // kg structure mass
     double m0 = mprop + mpl + mstruc; // initialmass
     double tburn = 356.0; // burn time (s)
-    double mDot =  mprop/tburn; // kg/s propellent mass flow rate
+    double mDot = mprop / tburn; // kg/s propellent mass flow rate
     double thrust = 1900000.0; // Netwons
-
-    //double hturn = 1000 // pitchover height why is this known ???
+    double T = thrust;
+    //double hturn = 1000.0; // experimenting with this but it still fails sometimes
 
     // Atmospheric Conditions
     double CD = 0.3; // drag coefficient
-    double g0 = -9.81;
-    double g = 0.0;
+    double g0 = 9.81; // gravity at sea level
     double rho0 = 12.93; // density of air kg/m^3 at sea level
-    long double rho = 0.0; // initialising
     double hscale = 8500.0; // m, scale of rapid atmospheric change within Earths Atmosphere
 
-    //size parameters
+    // Size parameters
     double diam = 3.05; // m rocket diameter
-    double A  = M_PI* pow((diam/2),2); // area of the nose (frontal portion)
+    double A = M_PI * pow((diam / 2), 2); // area of the nose (frontal portion)
+    double Re = 6371000.0; // radius of earth from centre to surface
+    double AL = M_PI * pow((diam/2),2); // Lift area
 
-    // differential inputs
+    // Differential inputs
     double t = 0.0; // seconds
     double v = 0.0; // meters per second
-    double y = 0.0; // vertical position in meters
-    double x = 0.0; // horizontal position in meters
+    double h = 0.0; // height position in meters
+    double psi = deg2rad(10); // start at 10 degrees
 
+    // Time parameters
+    double dt = 1.0; // time per calculation
+    double t_end = 1400.0; // time of simulation
 
-    // angular parameters
-    double psi_dot = 0.0;
-    double theta_dot = 0.0;
-    double h_dot = 0.0;
-    double phi_dot = 0.0;
-    double phi = 0.0;
-    double deg = 0.0;
-    double psi0 = 0.3*deg; // rad initial flight path angle
-    double theta0 = 0.0; // rad inital downrange angle
-    double h0 = 0.0; // initial height
-    double psi = 10 * M_PI/180; //start at 10 degrees
-    double theta = 0.0;
-    double h = 0.0;
-    double Re = 6371000.0; // radius of earth from centre to surface
-
-    //solving using Eulers
-    double dt = 2; // time step in seconds
-    double t_end = 1600.0; // end time for the simulation
-
-    // Open a file to write the data
+    // Open a file to write data
     std::ofstream outfile("rocket_trajectory.csv");
-    outfile << "Time,Velocity,Distance,Height\n"; // Header
+    outfile << "Time,Velocity,Distance,Height,Angle\n"; // Headers
 
-
-    // Euler's method loop
+    // RK4 method loop
     while (t <= t_end) {
-        //------------------------------Determine the thrust of rocket -------------------------------------
-        // Check if the fuel is depleted and set Thrust to 0
-        T = (t <= tburn) ? thrust : 0;
+        // calculate Lift co-efficient
+        double CL = psi * (2 * M_PI); // approximating it using thin air foil theory
 
-        //------------------------------Solving Vertical and Angular components-------------------------------------
+        // Update rocket mass and thrust
+        m = (t <= tburn) ? (m0 - mDot * t) : mstruc;
+        T = (t <= tburn) ? thrust : 0.0;
 
-        //why do this here why not just calculate individually
-        // Calculate thrust components
-        double thrustX = T * sin(psi); // Horizontal component of thrust
-        double thrustY = T * cos(psi); // Vertical component of thrust
+        // Perform RK4 integration step
+        rk4(v, h, psi, t, dt, m, T, Re, g0, hscale, rho0, A, CD,CL,AL);
 
-        // Compute drag force components
-        double vx = v * sin(psi); // Horizontal velocity component
-        double vy = v * cos(psi); // Vertical velocity component
+        // Calculate distance traveled along the Earth's surface
+        double theta = (v * sin(psi)) / (Re + h) * dt;
+        double dr = theta * Re / 1000;
 
-        //calculating Drag and gravity
-        rho = rho0 * exp(-h/hscale);
-        printf("%Lf \n",rho);
-        g = g0 /  pow((1 + h / Re),2);
+        // Write current time, velocity, and position to file
+        outfile << t << "," << v << "," << dr << "," << h << "," << rad2deg(psi) << "\n";
 
-        long double dragX = 0.5 * rho * pow(vx,2) * A * CD; // Horizontal component of drag
-        long double dragY = 0.5 * rho * pow(vy,2) * A * CD; // Vertical component of drag
+        // Output the current time, velocity, and position
+        std::cout << "Time: " << t << " s, Velocity: " << v << " m/s, Height: " << h << " m, Angle: " << rad2deg(psi) << " degrees" << std::endl;
 
-        //------------------------------Solving De's-------------------------------------
-        double Dv_dtX, Dv_dtY;
-        if (T > 0){ // before gravity turn
-
-            m = m0 - mDot * t; //Rocket mass
-            psi_dot = 0; // rate of change of psi
-            Dv_dtY = ((thrustY - dragY) / m) + g; // acceleration
-            Dv_dtX = ((thrustX - dragX) / m); // acceleration
-            theta_dot = 0; // rate of change of angle relative to Earths centre
-            h_dot = v; // change in height
-
-            //printf("no drag %f drag %f \n", Dv_dt, Dv_dtdrag);
-            //Dv_dt = (thrust - m * 9.8 - CD * pow(v,2)- v * mDot) / m; // change to drag ... K * pow(v, 2   original DE
-
-        } else{ // after gravity turn
-
-            m = m0 - mDot * tburn; //Rocket mass
-
-            phi_dot = g * sin(psi) / v;  //
-            Dv_dtY = ((thrustY - dragY) / m) - g * cos(psi);
-            Dv_dtX = ((thrustX - dragX) / m); // acceleration
-            h_dot = -v * cos(psi);
-            theta_dot = v * sin(psi) / (Re + h);
-            psi_dot = phi_dot - theta_dot;
-
-        }
-
-        // Update the velocity and time using Euler's method
-        v = v + sqrt(pow(Dv_dtX, 2) + pow(Dv_dtY, 2)) * dt;
-        vy = v + Dv_dtY * dt; // velocity //
-        vx =  v + Dv_dtX * dt; // velocity
-        //x = x + Dv_dtX * dt * dt; // distance
-        y = y + Dv_dtY * dt; // height
-        h = h + h_dot * dt; // height as well but calculated differently
-        psi = psi + psi_dot * dt; // angle
-        phi_dot = phi + phi_dot * dt;
-        theta = theta + theta_dot * dt; //
-        t = t + dt;
-
-        ///When Rocket collides
-        if (h<0){
+        // Stop simulation if the rocket hits the ground
+        if (h < 0) {
             h = 0;
             break;
         }
-
-        double dr = theta * Re/1000;
-        // Write current time, velocity, and position to file
-        outfile << t << "," << v << "," << x << "," << h << "\n";
-
-        // Output the current time, velocity, and position
-        std::cout << "Time: " << t << " s, Velocity: " << v <<" Height: " << h << " m" << " Acceleration: " << Dv_dtY << " angle: " << psi*180/M_PI <<std::endl;
     }
 
-    //plotting
-    // Plot the results using matplotlibcpp
-    outfile.close();
+    outfile.close(); //Close file
     std::cout << "Data written to rocket_trajectory.csv" << std::endl;
 
     return 0;
