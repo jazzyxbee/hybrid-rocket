@@ -3,6 +3,49 @@
 #include <fstream>
 #include <array>
 #include <functional>
+// Structure to hold angle, CL, and CD values
+struct CoeffData {
+    double angle;
+    double CL;
+    double CD;
+};
+
+// Function to load data from CSV file
+std::vector<CoeffData> loadCoeffData(const std::string& filename) {
+    std::vector<CoeffData> data;
+    std::ifstream file(filename);
+    if (!file.is_open()) {
+        std::cerr << "Error: Cannot open file " << filename << std::endl;
+        return data;
+    }
+
+    std::string line;
+    while (std::getline(file, line)) {
+        CoeffData dp;
+        if (sscanf(line.c_str(), "%lf,%lf,%lf", &dp.angle, &dp.CL, &dp.CD) == 3) {
+            data.push_back(dp);
+        }
+    }
+
+    file.close();
+    return data;
+}
+
+void getCL_CD(double angle, std::vector<CoeffData>& data, double& CL, double& CD){
+   // Interpolate the value of CL and CD based on a given angle CD and CL from data
+   for(int i = 0; i < data.size()-1; i++){
+       if(angle >= data[i].angle && angle < data[i+1].angle ) {
+           double slopeCL = ((data[i+1].CL-data[i].CL)/(data[i+1].angle - data[i].angle));
+           double slopeCD = ((data[i+1].CD-data[i].CD)/(data[i+1].angle - data[i].angle));
+           CL = data[i].CL + (slopeCL) * (angle - data[i].angle);
+           CD = data[i].CD + (slopeCD) * (angle - data[i].angle);
+           return;
+       }
+   }
+   //sets the values to zero if out of range
+   CL = 0.0;
+   CD = 0.0;
+}
 
 // Function to convert degrees to radians
 double deg2rad(double degrees) {
@@ -18,18 +61,18 @@ double rad2deg(double radians) {
 std::array<double, 4> derivatives(double t, double v, double h, double psi, double m, double T, double Re, double g0, double hscale, double rho0, double A, double CD, double CL, double AL) {
     double g = g0 / pow((1 + h / Re), 2);
     double rho = rho0 * exp(-h / hscale);
-    double drag = (1 / 2) * rho * pow(v, 2) * A * CD;
+    double drag = (1 / 2) * CD * rho * pow(v, 2) * A;
     double lift = (1 / 2) * CL * rho * pow(v, 2) * AL;
     double Dv_dt, h_dot, psi_dot, theta_dot;
 
     if (h <= 1000000) { // before gravity turn currently at karman line possibly to high??
-        Dv_dt = T / m - drag / m - g;
+        Dv_dt = T / m - drag / m - g + lift/m;
         h_dot = v;
         psi_dot = 0;
         theta_dot = 0;
     } else { // after gravity turn
         double phi_dot = g * sin(psi) / v; // defined here due to scope
-        Dv_dt = T / m + drag / m - g * cos(psi);
+        Dv_dt = T / m + drag / m + lift/m - g * cos(psi);
         h_dot = v * cos(psi);
         theta_dot = (v * sin(psi)) / (Re + h);
         psi_dot = phi_dot - theta_dot;
@@ -74,7 +117,7 @@ int main() {
     //double hturn = 1000.0; // experimenting with this but it still fails sometimes
 
     // Atmospheric Conditions
-    double CD = 0.3; // drag coefficient
+    //double CD = 0.3; // drag coefficient // changed to depend on attack angle
     double g0 = 9.81; // gravity at sea level
     double rho0 = 12.93; // density of air kg/m^3 at sea level
     double hscale = 8500.0; // m, scale of rapid atmospheric change within Earths Atmosphere
@@ -90,6 +133,7 @@ int main() {
     double v = 0.0; // meters per second
     double h = 0.0; // height position in meters
     double psi = deg2rad(10); // start at 10 degrees
+    double CL,CD;
 
     // Time parameters
     double dt = 1.0; // time per calculation
@@ -97,12 +141,20 @@ int main() {
 
     // Open a file to write data
     std::ofstream outfile("rocket_trajectory.csv");
-    outfile << "Time,Velocity,Distance,Height,Angle\n"; // Headers
+    outfile << "Time,Velocity,Distance,Height,Angle,Vx,Vy\n"; // Headers
+
+    // Load data from the CSV file
+    std::vector<CoeffData> data = loadCoeffData("xf-n0012-il-1000000.csv"); // Using NACA 0012 data for reynolds number 10^6
+    if (data.empty()) {
+        std::cerr << "Failed to load data." << std::endl;
+        return 1;
+    }
 
     // RK4 method loop
     while (t <= t_end) {
         // calculate Lift co-efficient
-        double CL = psi * (2 * M_PI); // approximating it using thin air foil theory
+        getCL_CD(rad2deg(psi), data, CL, CD);
+        //printf("%f",CL);
 
         // Update rocket mass and thrust
         m = (t <= tburn) ? (m0 - mDot * t) : mstruc;
@@ -111,15 +163,20 @@ int main() {
         // Perform RK4 integration step
         rk4(v, h, psi, t, dt, m, T, Re, g0, hscale, rho0, A, CD,CL,AL);
 
+        // Components of velocity
+        double vx = v *cos(psi);
+        double vy = v *sin(psi);
+        double vtot = sqrt(pow(vx,2) + pow(vy,2));
+
         // Calculate distance traveled along the Earth's surface
         double theta = (v * sin(psi)) / (Re + h) * dt;
         double dr = theta * Re / 1000;
 
         // Write current time, velocity, and position to file
-        outfile << t << "," << v << "," << dr << "," << h << "," << rad2deg(psi) << "\n";
+        outfile << t << "," << v << "," << dr << "," << h << "," << rad2deg(psi) << "," << vy << "," << vx << "\n";
 
         // Output the current time, velocity, and position
-        std::cout << "Time: " << t << " s, Velocity: " << v << " m/s, Height: " << h << " m, Angle: " << rad2deg(psi) << " degrees" << std::endl;
+        //std::cout << "Time: " << t << " s, Velocity: " << v << " m/s, Height: " << h << " m, Angle: " << rad2deg(psi) << " degrees" << std::endl;
 
         // Stop simulation if the rocket hits the ground
         if (h < 0) {
