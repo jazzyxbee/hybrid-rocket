@@ -65,19 +65,27 @@ std::array<double, 4> derivatives(double t, double v, double h, double psi, doub
     double lift = (1 / 2) * CL * rho * pow(v, 2) * AL;
     double Dv_dt, h_dot, psi_dot, theta_dot;
 
-    if (h <= 1000000) { // before gravity turn currently at karman line possibly to high??
+    if (h <= 10000) { // before gravity turn currently at karman line possibly to high??
         Dv_dt = T / m - drag / m - g + lift/m;
         h_dot = v;
         psi_dot = 0;
         theta_dot = 0;
+
     } else { // after gravity turn
-        double phi_dot = g * sin(psi) / v; // defined here due to scope
+        // look at doing it differently here
+
         Dv_dt = T / m + drag / m + lift/m - g * cos(psi);
+        double phi_dot = g * sin(psi) / v; // defined here due to scope
         h_dot = v * cos(psi);
         theta_dot = (v * sin(psi)) / (Re + h);
         psi_dot = phi_dot - theta_dot;
-    }
 
+        //double vx = v * cos(psi);
+        //double vy = v * sin(psi);
+        //psi_dot = psi + atan2(vx,vy);
+        //psuedo code
+        //  use trig here to solve psi dot then let rk4 approximate the true value?
+    }
     return {Dv_dt, h_dot, psi_dot, theta_dot};
 }
 
@@ -141,7 +149,7 @@ int main() {
 
     // Open a file to write data
     std::ofstream outfile("rocket_trajectory.csv");
-    outfile << "Time,Velocity,Distance,Height,Angle,Vx,Vy\n"; // Headers
+    outfile << "Time,Velocity,Distance,Height,Angle,Vx,Vy,Psi2\n"; // Headers
 
     // Load data from the CSV file
     std::vector<CoeffData> data = loadCoeffData("xf-n0012-il-1000000.csv"); // Using NACA 0012 data for reynolds number 10^6
@@ -166,6 +174,9 @@ int main() {
         // Components of velocity
         double vx = v *cos(psi);
         double vy = v *sin(psi);
+        double psi2 = atan2(vy, vx);
+        printf("%f %n",   rad2deg(psi2));
+
         double vtot = sqrt(pow(vx,2) + pow(vy,2));
 
         // Calculate distance traveled along the Earth's surface
@@ -173,7 +184,7 @@ int main() {
         double dr = theta * Re / 1000;
 
         // Write current time, velocity, and position to file
-        outfile << t << "," << v << "," << dr << "," << h << "," << rad2deg(psi) << "," << vy << "," << vx << "\n";
+        outfile << t << "," << v << "," << dr << "," << h << "," << rad2deg(psi) << "," << vy << "," << vx << "," << rad2deg(psi2) << "\n";
 
         // Output the current time, velocity, and position
         //std::cout << "Time: " << t << " s, Velocity: " << v << " m/s, Height: " << h << " m, Angle: " << rad2deg(psi) << " degrees" << std::endl;
