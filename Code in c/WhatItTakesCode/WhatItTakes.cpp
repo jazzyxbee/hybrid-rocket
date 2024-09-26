@@ -65,7 +65,7 @@ std::array<double, 4> derivatives(double t, double v, double h, double psi, doub
     double lift = (1 / 2) * CL * rho * pow(v, 2) * AL;
     double Dv_dt, h_dot, psi_dot, theta_dot;
 
-    if (h <= 10000) { // before gravity turn currently at karman line possibly to high??
+    if (h <= 8000) { // before gravity turn currently at karman line possibly to high??
         Dv_dt = T / m - drag / m - g + lift/m;
         h_dot = v;
         psi_dot = 0;
@@ -109,6 +109,21 @@ void rk4(double& v, double& h, double& psi, double& t, double dt, double m, doub
     t += dt;
 }
 
+// Function to calculate pitching moment coefficient (C_M)
+double calculateCM(double alpha){
+    // Example formula replace this with empirical data or look-up tables
+    return 0.1 * alpha; // A simple linear relationship for small angles
+}
+
+// Function to calculate the pitching moment
+double calculatePitchingMoment(double velocity, double alpha, double rho, double diam, double L) {
+    double S = M_PI*pow((diam/2),2); // reference area
+    double CM = calculateCM(alpha); // moment co-effecient
+    double dynamicPressure = 0.5 * rho * std::pow(velocity, 2);
+    double M = CM * dynamicPressure * S * L;  // calculating the moment
+    return M;
+}
+
 int main() {
     // Based on the Titan 2 and Gemini Spacecraft
 
@@ -135,6 +150,7 @@ int main() {
     double A = M_PI * pow((diam / 2), 2); // area of the nose (frontal portion)
     double Re = 6371000.0; // radius of earth from centre to surface
     double AL = M_PI * pow((diam/2),2); // Lift area
+    double L = 33; // length of Titan 2
 
     // Differential inputs
     double t = 0.0; // seconds
@@ -183,11 +199,14 @@ int main() {
         double theta = (v * sin(psi)) / (Re + h) * dt;
         double dr = theta * Re / 1000;
 
+        // Calculate pitching moment
+        double pitchingMoment = calculatePitchingMoment(v, theta,rho0, diam, L);
+
         // Write current time, velocity, and position to file
         outfile << t << "," << v << "," << dr << "," << h << "," << rad2deg(psi) << "," << vy << "," << vx << "," << rad2deg(psi2) << "\n";
 
         // Output the current time, velocity, and position
-        //std::cout << "Time: " << t << " s, Velocity: " << v << " m/s, Height: " << h << " m, Angle: " << rad2deg(psi) << " degrees" << std::endl;
+        std::cout << "Time: " << t << " s, Velocity: " << v << " m/s, Height: " << h << " m, Angle: " << rad2deg(psi) << " degrees" << "Pitching Moment: " << pitchingMoment << std::endl;
 
         // Stop simulation if the rocket hits the ground
         if (h < 0) {
