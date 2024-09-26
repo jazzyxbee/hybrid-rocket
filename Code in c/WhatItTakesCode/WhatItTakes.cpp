@@ -10,6 +10,20 @@ struct CoeffData {
     double CD;
 };
 
+struct Rocket {
+    double m0;        // Initial mass
+    double mprop;     // Propellant mass
+    double mpl;       // Payload mass
+    double mstruc;    // Structural mass
+    double tburn;     // Burn time
+    double thrust;    // Thrust force
+    double mDot;      // Mass flow rate
+    double diam;      // Diameter
+    double A;         // Area (cross-sectional)
+    double L;         // Length of rocket
+};
+
+
 // Function to load data from CSV file
 std::vector<CoeffData> loadCoeffData(const std::string& filename) {
     std::vector<CoeffData> data;
@@ -65,7 +79,7 @@ std::array<double, 4> derivatives(double t, double v, double h, double psi, doub
     double lift = (1 / 2) * CL * rho * pow(v, 2) * AL;
     double Dv_dt, h_dot, psi_dot, theta_dot;
 
-    if (h <= 8000) { // before gravity turn currently at karman line possibly to high??
+    if (h <= 15000 && T>0) { // before gravity turn currently at karman line possibly to high??
         Dv_dt = T / m - drag / m - g + lift/m;
         h_dot = v;
         psi_dot = 0;
@@ -126,31 +140,28 @@ double calculatePitchingMoment(double velocity, double alpha, double rho, double
 
 int main() {
     // Based on the Titan 2 and Gemini Spacecraft
+    // Rocket parameters stored in a struct
+    Rocket titan2 {
+            .m0 = 111130 + 32000 + 6736,   // Initial mass = propellant + payload + structure
+            .mprop = 111130.0,                   // kg propellent mass
+            .mpl = 32000.0,                      // kg payload mass
+            .mstruc = 6736.0,                    // kg structure mass
+            .tburn = 356.0,                      // burn time in seconds
+            .thrust = 1900000.0,                 // Newtons
+            .mDot = titan2.mprop / titan2.tburn, // kg/s propellent mass flow rate
+            .diam = 3.05,                        // rocket diameter meters
+            .A = M_PI * pow((3.05 / 2), 2),      // m^2 (cross-sectional area or area of nose cone)
+            .L = 33.0                            // meters (rocket length)
+    };
 
-    // Initial parameters
-    double m = 0.0; // initial mass
-    double mprop = 111130.0; // kg propellent mass 111130.0
-    double mpl = 32000.0; // kg payload mass
-    double mstruc = 6736.0; // kg structure mass
-    double m0 = mprop + mpl + mstruc; // initialmass
-    double tburn = 356.0; // burn time (s)
-    double mDot = mprop / tburn; // kg/s propellent mass flow rate
-    double thrust = 1900000.0; // Netwons
-    double T = thrust;
-    //double hturn = 1000.0; // experimenting with this but it still fails sometimes
+    double m = 0.0; // resetting active mass to 0
+    double T = titan2.thrust;
 
     // Atmospheric Conditions
-    //double CD = 0.3; // drag coefficient // changed to depend on attack angle
     double g0 = 9.81; // gravity at sea level
     double rho0 = 12.93; // density of air kg/m^3 at sea level
     double hscale = 8500.0; // m, scale of rapid atmospheric change within Earths Atmosphere
-
-    // Size parameters
-    double diam = 3.05; // m rocket diameter
-    double A = M_PI * pow((diam / 2), 2); // area of the nose (frontal portion)
     double Re = 6371000.0; // radius of earth from centre to surface
-    double AL = M_PI * pow((diam/2),2); // Lift area
-    double L = 33; // length of Titan 2
 
     // Differential inputs
     double t = 0.0; // seconds
@@ -181,17 +192,17 @@ int main() {
         //printf("%f",CL);
 
         // Update rocket mass and thrust
-        m = (t <= tburn) ? (m0 - mDot * t) : mstruc;
-        T = (t <= tburn) ? thrust : 0.0;
+        m = (t <= titan2.tburn) ? (titan2.m0 - titan2.mDot * t) : titan2.mstruc;
+        T = (t <= titan2.tburn) ? titan2.thrust : 0.0;
 
         // Perform RK4 integration step
-        rk4(v, h, psi, t, dt, m, T, Re, g0, hscale, rho0, A, CD,CL,AL);
+        rk4(v, h, psi, t, dt, m, T, Re, g0, hscale, rho0, titan2.A, CD, CL, titan2.A);
 
         // Components of velocity
         double vx = v *cos(psi);
         double vy = v *sin(psi);
         double psi2 = atan2(vy, vx);
-        printf("%f %n",   rad2deg(psi2));
+        //printf("%f %n",   rad2deg(psi2));
 
         double vtot = sqrt(pow(vx,2) + pow(vy,2));
 
@@ -200,7 +211,9 @@ int main() {
         double dr = theta * Re / 1000;
 
         // Calculate pitching moment
-        double pitchingMoment = calculatePitchingMoment(v, theta,rho0, diam, L);
+        //double pitchingMoment = calculatePitchingMoment(v, theta, rho0, titan2.diam, titan2.L);
+        double pitchingMoment = 0;
+
 
         // Write current time, velocity, and position to file
         outfile << t << "," << v << "," << dr << "," << h << "," << rad2deg(psi) << "," << vy << "," << vx << "," << rad2deg(psi2) << "\n";
