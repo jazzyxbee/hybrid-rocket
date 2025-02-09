@@ -7,15 +7,25 @@
 
 /// Equations and other methods are stored in WhatItTakes.h
 
+//Global Variables
+double T = thrust;
+
+// Atmospheric Conditions
+double g0 = 9.81; // gravity at sea level
+double rho0 = 12.93; // density of air kg/m^3 at sea level
+double hscale = 8500.0; // m, scale of rapid atmospheric change within Earths Atmosphere
+double Re = 6371000.0; // radius of earth from centre to surface
+double CL,CD;
+
 //function prototypes
-void rk4(double& v, double& h, double& psi, double& theta, double& phi, double& t, double dt, double m, double T, double Re, double g0, double hscale, double rho0, double A, double CD, double CL,double AL,double wx, double wy, double wz);
+void rk4(double& v, double& h, double& psi, double& theta, double& phi, double& t, double dt, double m, double wx, double wy, double wz);
 
 // Function to calculate the derivatives of the system
-std::array<double, 10> derivatives(double t, double v, double h, double psi, double theta, double phi, double m, double T, double Re, double g0, double hscale, double rho0, double A, double CD, double CL, double AL, double wx,double wy, double wz) {
+std::array<double, 10> derivatives(double t, double v, double h, double psi, double theta, double phi, double m, double wx,double wy, double wz) {
     double g = g0 / pow((1 + h / Re), 2);    // Gravity at height
     double rho = rho0 * exp(-h / hscale);       // air density constant
     double drag = 0.5 * CD * rho * pow(v, 2) * A;
-    double lift = 0.5 * CL * rho * pow(v, 2) * AL;
+    double lift = 0.5 * CL * rho * pow(v, 2) * A;
     double Dv_dt, h_dot, psi_dot, theta_dot;
     double dphi, dtheta, dpsi; // For Euler Angles
 
@@ -69,20 +79,12 @@ std::array<double, 10> derivatives(double t, double v, double h, double psi, dou
 }
 
 int main() {
-    double T = thrust;
-
-    // Atmospheric Conditions
-    double g0 = 9.81; // gravity at sea level
-    double rho0 = 12.93; // density of air kg/m^3 at sea level
-    double hscale = 8500.0; // m, scale of rapid atmospheric change within Earths Atmosphere
-    double Re = 6371000.0; // radius of earth from centre to surface
 
     // Differential inputs
     double t = 0.0; // seconds
     double v = 0.0; // meters per second
     double h = 0.0; // height position in meters
     double psi = deg2rad(10); // start at 10 degrees
-    double CL,CD;
 
     // Time parameters
     double dt = 1.0; // time per calculation
@@ -101,7 +103,6 @@ int main() {
 
     // Simulation begins, RK4 method loop
     while (t <= t_end) {
-
         // calculate Lift co-efficient
         getCL_CD(rad2deg(psi), data, CL, CD);
 
@@ -131,7 +132,7 @@ int main() {
         double wy = 1;
         double wz = 1;
         // Perform RK4 integration step
-        rk4(v, h, psi, theta, phi, t, dt, m, T, Re, g0, hscale, rho0, A, CD, CL, A,wx,wy,wz);
+        rk4( v,  h,  psi, theta, phi,  t, dt,  m,  wx,  wy, wz);
 
         // Write current time, velocity, and position to file
         outfile << t << "," << v << "," << dr << "," << h << "," << rad2deg(psi) << "," << vy << "," << vx << "," << rad2deg(psi2) << "\n";
@@ -153,17 +154,17 @@ int main() {
 }
 
 // Function to perform the RK4 method Runge Kutta
-void rk4(double& v, double& h, double& psi, double& theta, double& phi, double& t, double dt, double m, double T, double Re, double g0, double hscale, double rho0, double A, double CD, double CL,double AL,double wx, double wy, double wz) {
+void rk4(double& v, double& h, double& psi, double& theta, double& phi, double& t, double dt, double m, double wx, double wy, double wz) {
     // K1 beginning of the interval using Euler's method
     // K2 the midpoint of the interval
     // K3 again midpoint of the interval
     // K4 end of the interval
     // sum weighted v, h, psi, t
 
-    auto k1 = derivatives(t, v, h, psi, theta, phi, m, T, Re, g0, hscale, rho0, A, CD, CL, AL, wx, wy, wz);
-    auto k2 = derivatives(t + dt / 2, v + k1[0] * dt / 2, h + k1[1] * dt / 2, psi + k1[2] * dt / 2,theta + k1[3] * dt / 2, phi + k1[4] * dt / 2, m, T, Re, g0, hscale, rho0, A, CD, CL, AL, wx, wy, wz);
-    auto k3 = derivatives(t + dt / 2, v + k2[0] * dt / 2, h + k2[1] * dt / 2, psi + k2[2] * dt / 2,theta + k2[3] * dt / 2, phi + k2[4] * dt / 2, m, T, Re, g0, hscale, rho0, A, CD, CL, AL, wx, wy, wz);
-    auto k4 = derivatives(t + dt, v + k3[0] * dt, h + k3[1] * dt, psi + k3[2] * dt, theta + k3[3] * dt,phi + k3[4] * dt, m, T, Re, g0, hscale, rho0, A, CD, CL, AL, wx, wy, wz);
+    auto k1 = derivatives(t, v, h, psi, theta, phi, m, wx, wy, wz);
+    auto k2 = derivatives(t + dt / 2, v + k1[0] * dt / 2, h + k1[1] * dt / 2, psi + k1[2] * dt / 2,theta + k1[3] * dt / 2, phi + k1[4] * dt / 2, m, wx, wy, wz);
+    auto k3 = derivatives(t + dt / 2, v + k2[0] * dt / 2, h + k2[1] * dt / 2, psi + k2[2] * dt / 2,theta + k2[3] * dt / 2, phi + k2[4] * dt / 2, m,  wx, wy, wz);
+    auto k4 = derivatives(t + dt, v + k3[0] * dt, h + k3[1] * dt, psi + k3[2] * dt, theta + k3[3] * dt,phi + k3[4] * dt, m, wx, wy, wz);
 
     //middle points weighted by 1/3 and ends weighted by 1/6 to achieve 4th order accuracy
     v += (k1[0] + 2 * k2[0] + 2 * k3[0] + k4[0]) * dt / 6.0; // yn + 1
