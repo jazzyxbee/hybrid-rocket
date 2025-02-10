@@ -33,8 +33,8 @@
         Vector3 h_dot = {0,0,0};
         Vector3 dw_dot = {0,0,0};
 
-        if (h.y <= 15000 && thrust_local.y>0) { // before gravity turn currently at karman line possibly to high??
             // Calculate the net force in each direction based on thrust, drag, lift, and gravity
+           /*
             double drag_x = drag * (v.x / v_magnitude);  // Drag component in x
             double drag_y = drag * (v.y / v_magnitude);  // Drag component in y
             double drag_z = drag * (v.z / v_magnitude);  // Drag component in z
@@ -42,6 +42,14 @@
             double lift_x = lift * (v.x / v_magnitude);  // Lift component in x
             double lift_y = lift * (v.y / v_magnitude);  // Lift component in y
             double lift_z = lift * (v.z / v_magnitude);  // Lift component in z
+*/
+            double drag_x =  1;// Drag component in x
+            double drag_y = 1;  // Drag component in y
+            double drag_z = 1;  // Drag component in z
+
+            double lift_x =1;
+            double lift_y = 1;
+            double lift_z = 1;
 
             acceleration.x = thrust_local.x / m - drag_x / m - g + lift_x/m;
             acceleration.y = thrust_local.y / m - drag_y / m - g + lift_y/m;
@@ -59,7 +67,7 @@
             // Update angular velocities
             dw_dot = calculateAngularAccelerations(inertia.Ix,inertia.Iy,inertia.Iz, wx, wy, wz, torque[0], torque[1], torque[2]);
 
-        }
+
         return {acceleration, h_dot, dw_dot};
     }
 
@@ -68,10 +76,11 @@
         double t = 0.0; // seconds
         double psi = deg2rad(10); // start at 10 degrees
 
-        Quaternion orientation = {psi, 0, 0, 0}; // Initial orientation
+        Quaternion orientation = {cos(psi / 2), 0, sin(psi / 2), 0}; // Rotation around y-axis
 
         Vector3 position = {0, 0, 0};   // Initial position
         Vector3 v = {0.1, 0.1, 0.1};         // Initial velocity
+
 
         // attempt to rectify code
         double wx = 0;
@@ -119,7 +128,7 @@
            // outfile << t << "," << v.y << "," << position.z << "," << rad2deg(psi) << "," << v.z << "," << v.x << "\n";
 
             // Output the current time, velocity, and position
-            std::cout << "Time: " << t << " s, Velocity: " << v.z << " m/s, Height: " << position.z << " m, Angle: " << rad2deg(psi) << " degrees" << std::endl;
+            std::cout << "Time: " << t << " s, Velocity y : " << v.y << "   Vx :  " << v.x << ", Height: " << position.x << "  y: " << position.y << "  z:  " <<position.z << std::endl;
 
             // Stop simulation if the rocket hits the ground
             if (position.z < 0) {
@@ -138,20 +147,11 @@
         return {vec.x * scalar, vec.y * scalar, vec.z * scalar};
     }
 
-    Vector3 arrayToVector3(const std::array<double, 3>& arr) {
-        return {arr[0], arr[1], arr[2]};
-    }
 
     // Helper function to sum two Vector3 objects
     Vector3 sumVectors(const Vector3& v1, const Vector3& v2) {
         return {v1.x + v2.x, v1.y + v2.y, v1.z+ v2.z};
     }
-
-    // Helper function to multiply two Vector3 objects element-wise
-    Vector3 multiplyVectors(const Vector3& v1, const Vector3& v2) {
-        return {v1.x * v2.x, v1.y * v2.y, v1.z * v2.z};
-    }
-
 
     // Function to perform the RK4 method Runge Kutta
     void rk4(Vector3& v, Vector3& h, double& t, double dt, double m, double wx, double wy, double wz) {
@@ -167,30 +167,30 @@
         auto k1 = derivatives(t, v, h, m, wx, wy, wz);
 
         // preforms h + k1[1] * dt / 2 but needs extra syntax due to Vector3 subtype
-        auto vmid = sumVectors(v,scaleVector(std::get<1>(k1), dt / 2));
-        auto hmid  = sumVectors(h,scaleVector(std::get<2>(k1), dt / 2));
+        auto vmid = sumVectors(v,scaleVector(std::get<0>(k1), dt / 2));
+        auto hmid  = sumVectors(h,scaleVector(std::get<1>(k1), dt / 2));
 
         auto k2 = derivatives(t + dt / 2, vmid, hmid , m, wx, wy, wz);
 
-        auto vmid2 = sumVectors(v,scaleVector(std::get<1>(k2), dt / 2));
-        auto hmid2 = sumVectors(h,scaleVector(std::get<2>(k2), dt / 2));
+        auto vmid2 = sumVectors(v,scaleVector(std::get<0>(k2), dt / 2));
+        auto hmid2 = sumVectors(h,scaleVector(std::get<1>(k2), dt / 2));
 
         auto k3 = derivatives(t + dt / 2, vmid2, hmid2, m,  wx, wy, wz);
 
-        auto vmid3 = sumVectors(v,scaleVector(std::get<1>(k3), dt));
-        auto hmid3 = sumVectors(h,scaleVector(std::get<2>(k3), dt));
+        auto vmid3 = sumVectors(v,scaleVector(std::get<0>(k3), dt));
+        auto hmid3 = sumVectors(h,scaleVector(std::get<1>(k3), dt));
 
         auto k4 = derivatives(t + dt, vmid3, hmid3, m, wx, wy, wz);
 
         //middle points weighted by 1/3 and ends weighted by 1/6 to achieve 4th order accuracy
         // solves v += (k1[0] + 2 * k2[0] + 2 * k3[0] + k4[0]) * dt / 6.0;
-        Vector3 Vpart1 = sumVectors(std::get<1>(k1),scaleVector(std::get<1>(k2),2));
-        Vector3 Vpart2 = sumVectors(scaleVector(std::get<1>(k3), 2), scaleVector(std::get<1>(k4), dt / 6.0));
+        Vector3 Vpart1 = sumVectors(std::get<0>(k1),scaleVector(std::get<0>(k2),2));
+        Vector3 Vpart2 = sumVectors(scaleVector(std::get<0>(k3), 2), scaleVector(std::get<0>(k4), dt / 6.0));
         v = sumVectors(v, sumVectors(Vpart1,Vpart2 )); // yn + 1
 
         // solves h += (k1[1] + 2 * k2[1] + 2 * k3[1] + k4[1]) * dt / 6.0;
-        Vector3 hPart1 = sumVectors(std::get<2>(k1),scaleVector(std::get<2>(k2),2));
-        Vector3 hPart2 = sumVectors(scaleVector(std::get<2>(k3), 2), scaleVector(std::get<2>(k4), dt / 6.0));
+        Vector3 hPart1 = sumVectors(std::get<1>(k1),scaleVector(std::get<1>(k2),2));
+        Vector3 hPart2 = sumVectors(scaleVector(std::get<1>(k3), 2), scaleVector(std::get<1>(k4), dt / 6.0));
         h = sumVectors(h, sumVectors(hPart1,hPart2 )); // yn + 1
 
         t += dt;
