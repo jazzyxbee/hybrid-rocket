@@ -8,7 +8,7 @@
     /// Equations and other methods are stored in WhatItTakes.h
 
     //Global Variables
-    Vector3 thrust_local = {0, thrust, 0};   // Thrust in local frame
+    Vector3 thrust_local = {0, 0, thrust};   // Thrust in local frame
 
     // Atmospheric Conditions
     double g0 = 9.81; // gravity at sea level
@@ -25,8 +25,8 @@
 
         /// figure out intergrating three velocitys and positions etc
         double v_magnitude = sqrt(v.x * v.x + v.y * v.y + v.z * v.z);  // Rocket speed (magnitude of velocity)
-        double g = g0 / pow((1 + h.y / Re), 2);    // Gravity at height
-        double rho = rho0 * exp(-h.y / hscale);       // air density constant
+        double g = g0 / pow((1 + h.z / Re), 2);    // Gravity at height
+        double rho = rho0 * exp(-h.z / hscale);       // air density constant
         double drag = 0.5 * CD * rho * pow(v_magnitude, 2) * A;
         double lift = 0.5 * CL * rho * pow(v_magnitude, 2) * A;
         Vector3 acceleration = {0,0,0};
@@ -51,9 +51,14 @@
             double lift_y = 1;
             double lift_z = 1;
 
-            acceleration.x = thrust_local.x / m - drag_x / m - g + lift_x/m;
-            acceleration.y = thrust_local.y / m - drag_y / m - g + lift_y/m;
-            acceleration.z = (lift_z - drag_z - g) / m;
+            //acceleration.x = (thrust_local.x - drag_x + lift_x) / m;
+           // acceleration.y = (thrust_local.y - drag_y + lift_y) / m;
+           // acceleration.z = (thrust_local.z - drag_z + lift_z) / m - g;
+
+
+            acceleration.x = thrust_local.x / m - drag_x / m  + lift_x/m;
+            acceleration.y = thrust_local.y / m - drag_y / m  + lift_y/m;
+            acceleration.z = (thrust_local.z + lift_z - drag_z - g) / m;
 
             h_dot.x = v.x;
             h_dot.y = v.y;
@@ -76,7 +81,8 @@
         double t = 0.0; // seconds
         double psi = deg2rad(10); // start at 10 degrees
 
-        Quaternion orientation = {cos(psi / 2), 0, sin(psi / 2), 0}; // Rotation around y-axis
+        //Quaternion orientation = {cos(psi / 2), 0, sin(psi / 2), 0}; // Rotation around y-axis
+        Quaternion orientation = {1, 0, 0, 0}; // No rotation, aligned with z-axis
 
         Vector3 position = {0, 0, 0};   // Initial position
         Vector3 v = {0.1, 0.1, 0.1};         // Initial velocity
@@ -93,8 +99,8 @@
         double t_end = 1400.0; // time of simulation
 
         // Open a file to write data
-        std::ofstream outfile("rocket_trajectory.csv");
-        outfile << "Time,Velocity,Distance,Height,Angle,Vx,Vy,Psi2\n"; // Headers
+        std::ofstream outfile("rocket_trajectory_Quaternions.csv");
+        outfile << "Time,Vx,Vy,Vz,x,y,z\n"; // Headers
 
         // Load data from the CSV file
         std::vector<CoeffData> data = loadCoeffData("xf-n0012-il-1000000.csv"); // Using NACA 0012 data for reynolds number 10^6
@@ -111,7 +117,7 @@
 
             // Update rocket mass and thrust
             double m = (t <= tburn) ? (m0 - mDot * t) : mstruc;
-            thrust_local.y = (t <= tburn) ? thrust: 0.0;
+            thrust_local.z = (t <= tburn) ? thrust: 0.0;
 
             // Update orientation with angular velocities
             Quaternion orientation_dot = rk4_quaternion_update(orientation,w,dt);
@@ -125,10 +131,11 @@
             rk4(v, position, t, dt,  m,  wx,  wy, wz);
 
             // Write current time, velocity, and position to file
-           // outfile << t << "," << v.y << "," << position.z << "," << rad2deg(psi) << "," << v.z << "," << v.x << "\n";
+            //outfile << t << "," << v.y << "," << position.z << "," << rad2deg(psi) << "," << v.z << "," << v.x << "\n";
+            outfile << t << "," << v.x << "," << v.y << "," << v.z << "," << position.x << "," << position.y << "," << position.z << "\n";
 
             // Output the current time, velocity, and position
-            std::cout << "Time: " << t << " s, Velocity y : " << v.y << "   Vx :  " << v.x << ", Height: " << position.x << "  y: " << position.y << "  z:  " <<position.z << std::endl;
+            std::cout << "Time: " << t << " s, Velocity y : " << v.y << "   Vx :  " << v.x << ", x: " << position.x << "  y: " << position.y << "  z:  " <<position.z << std::endl;
 
             // Stop simulation if the rocket hits the ground
             if (position.z < 0) {
@@ -138,7 +145,7 @@
         }
 
         outfile.close(); //Close file
-        std::cout << "Data written to rocket_trajectory.csv" << std::endl;
+        std::cout << "Data written to rocket_trajectory_Quaternions.csv" << std::endl;
 
         return 0;
     }
