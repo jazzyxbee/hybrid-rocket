@@ -1,186 +1,208 @@
-#include <iostream>
-#include <cmath>
-#include <fstream>
-#include <array>
-#include <functional>
-#include "WhatItTakes.h"
+    #include <iostream>
+    #include <cmath>
+    #include <fstream>
+    #include <array>
+    #include <functional>
+    #include "WhatItTakes.h"
+    #include <cassert>
 
-/// Equations and other methods are stored in WhatItTakes.h
+    /// Equations and other methods are stored in WhatItTakes.h
 
-//Global Variables
-double T = thrust;
+    //Global Variables
+    Vector3 thrust_local = {0, 0, thrust};   // Thrust in local frame
 
-// Atmospheric Conditions
-double g0 = 9.81; // gravity at sea level
-double rho0 = 12.93; // density of air kg/m^3 at sea level
-double hscale = 8500.0; // m, scale of rapid atmospheric change within Earths Atmosphere
-double Re = 6371000.0; // radius of earth from centre to surface
-double CL,CD;
+    // Atmospheric Conditions
+    double g0 = 9.81; // gravity at sea level
+    double rho0 = 12.93; // density of air kg/m^3 at sea level
+    double hscale = 8500.0; // m, scale of rapid atmospheric change within Earths Atmosphere
+    double Re = 6371000.0; // radius of earth from centre to surface
+    double CL,CD;
 
-//function prototypes
-void rk4(double& v, double& h, double& psi, double& theta, double& phi, double& t, double dt, double m, double wx, double wy, double wz);
+    //function prototypes
+    void rk4(Vector3& v, Vector3& h, double& t, double dt, double m, double wx, double wy, double wz);
 
-// Function to calculate the derivatives of the system
-std::array<double, 10> derivatives(double t, double v, double h, double psi, double theta, double phi, double m, double wx,double wy, double wz) {
-    double g = g0 / pow((1 + h / Re), 2);    // Gravity at height
-    double rho = rho0 * exp(-h / hscale);       // air density constant
-    double drag = 0.5 * CD * rho * pow(v, 2) * A;
-    double lift = 0.5 * CL * rho * pow(v, 2) * A;
-    double Dv_dt, h_dot, psi_dot, theta_dot;
-    double dphi, dtheta, dpsi; // For Euler Angles
+    // Function to calculate the derivatives of the system
+    std::tuple<Vector3, Vector3, Vector3>  derivatives(double t, Vector3 v, Vector3 h, double m, double wx,double wy, double wz) {
 
-    if (h <= 15000 && T>0) { // before gravity turn currently at karman line possibly to high??
-        Dv_dt = T / m - drag / m - g + lift/m;
-        h_dot = v;
+        /// figure out intergrating three velocitys and positions etc
+        double v_magnitude = sqrt(v.x * v.x + v.y * v.y + v.z * v.z);  // Rocket speed (magnitude of velocity)
+        double g = g0 / pow((1 + h.z / Re), 2);    // Gravity at height
+        double rho = rho0 * exp(-h.z / hscale);       // air density constant
+        double drag = 0.5 * CD * rho * pow(v_magnitude, 2) * A;
+        double lift = 0.5 * CL * rho * pow(v_magnitude, 2) * A;
+        Vector3 acceleration = {0,0,0};
+        Vector3 h_dot = {0,0,0};
+        Vector3 dw_dot = {0,0,0};
 
-        // constant thrust results in no angle changes
-        psi_dot = 0;
-        theta_dot = 0;
-        dphi = 0;
-        dtheta = 0;
-        dpsi = 0;
+            // Calculate the net force in each direction based on thrust, drag, lift, and gravity
+           /*
+            double drag_x = drag * (v.x / v_magnitude);  // Drag component in x
+            double drag_y = drag * (v.y / v_magnitude);  // Drag component in y
+            double drag_z = drag * (v.z / v_magnitude);  // Drag component in z
 
-    } else { // after gravity turn
-        // look at doing it differently here
+            double lift_x = lift * (v.x / v_magnitude);  // Lift component in x
+            double lift_y = lift * (v.y / v_magnitude);  // Lift component in y
+            double lift_z = lift * (v.z / v_magnitude);  // Lift component in z
+*/
+            double drag_x =  1;// Drag component in x
+            double drag_y = 1;  // Drag component in y
+            double drag_z = 1;  // Drag component in z
 
-        Dv_dt = T / m + drag / m + lift/m - g * cos(psi);
+            double lift_x =1;
+            double lift_y = 1;
+            double lift_z = 1;
 
-        // No thrust results in angle changes
-        double phi_dot = g * sin(psi) / v; // defined here due to scope
-        h_dot = v * cos(psi);
-        theta_dot = (v * sin(psi)) / (Re + h);
-        psi_dot = phi_dot - theta_dot;
+            //acceleration.x = (thrust_local.x - drag_x + lift_x) / m;
+           // acceleration.y = (thrust_local.y - drag_y + lift_y) / m;
+           // acceleration.z = (thrust_local.z - drag_z + lift_z) / m - g;
 
-        //double vx = v * cos(psi);
-        //double vy = v * sin(psi);
-        //psi_dot = psi + atan2(vx,vy);
 
-        // Get the torque based on thrust, lift, and drag
-        auto torque = calculateTorque(lift, drag, radius);
+            acceleration.x = thrust_local.x / m - drag_x / m  + lift_x/m;
+            acceleration.y = thrust_local.y / m - drag_y / m  + lift_y/m;
+            acceleration.z = (thrust_local.z + lift_z - drag_z - g) / m;
 
-        Inertia inertia = calculateInertia(diam, L, m);
+            h_dot.x = v.x;
+            h_dot.y = v.y;
+            h_dot.z = v.z;
 
-        // Update angular velocities
-        std::array<double, 3> dw_dot = calculateAngularAccelerations(inertia.Ix,inertia.Iy,inertia.Iz, wx, wy, wz, torque[0], torque[1], torque[2]);
+            // Get the torque based on thrust, lift, and drag
+            auto torque = calculateTorque(lift, drag, radius);
 
-        // Integrate the angular velocity to angular displacement
-        dphi = dw_dot[0]*t;
-        dtheta = dw_dot[1]*t;
-        dpsi = dw_dot[2]*t;
+            Inertia inertia = calculateInertia(diam, L, m);
 
-        // Compute the time derivatives of the Euler angles based on angular velocities
-        //dphi = wx + sin(phi) * tan(theta) * wy + cos(phi) * tan(theta) * wz;
-        //dtheta = cos(phi) * wy - sin(phi) * wz;
-        //dpsi = (sin(phi) / cos(theta)) * wy + (cos(phi) / cos(theta)) * wz;
+            // Update angular velocities
+            dw_dot = calculateAngularAccelerations(inertia.Ix,inertia.Iy,inertia.Iz, wx, wy, wz, torque[0], torque[1], torque[2]);
 
-        // psi_dot = dpsi;
-    }
-    return {Dv_dt, h_dot, psi_dot, theta_dot,dphi,dtheta,dpsi};
-}
 
-int main() {
-
-    // Differential inputs
-    double t = 0.0; // seconds
-    double v = 0.0; // meters per second
-    double h = 0.0; // height position in meters
-    double psi = deg2rad(10); // start at 10 degrees
-
-    // Time parameters
-    double dt = 1.0; // time per calculation
-    double t_end = 1400.0; // time of simulation
-
-    // Open a file to write data
-    std::ofstream outfile("rocket_trajectory.csv");
-    outfile << "Time,Velocity,Distance,Height,Angle,Vx,Vy,Psi2\n"; // Headers
-
-    // Load data from the CSV file
-    std::vector<CoeffData> data = loadCoeffData("xf-n0012-il-1000000.csv"); // Using NACA 0012 data for reynolds number 10^6
-    if (data.empty()) {
-        std::cerr << "Failed to load data." << std::endl;
-        return 1;
+        return {acceleration, h_dot, dw_dot};
     }
 
-    // Simulation begins, RK4 method loop
-    while (t <= t_end) {
-        // calculate Lift co-efficient
-        getCL_CD(rad2deg(psi), data, CL, CD);
+    int main() {
+        // Differential inputs
+        double t = 0.0; // seconds
+        double psi = deg2rad(10); // start at 10 degrees
 
-        // Update rocket mass and thrust
-        double m = (t <= tburn) ? (m0 - mDot * t) : mstruc;
-        T = (t <= tburn) ? thrust : 0.0;
+        //Quaternion orientation = {cos(psi / 2), 0, sin(psi / 2), 0}; // Rotation around y-axis
+        Quaternion orientation = {1, 0, 0, 0}; // No rotation, aligned with z-axis
 
-        // Components of velocity
-        double vx = v *cos(psi);
-        double vy = v *sin(psi);
-        double psi2 = atan2(vy, vx);
-        //printf("%f %n",   rad2deg(psi2));
-        double vtot = sqrt(pow(vx,2) + pow(vy,2));
+        Vector3 position = {0, 0, 0};   // Initial position
+        Vector3 v = {0.1, 0.1, 0.1};         // Initial velocity
 
-        // Calculate distance traveled along the Earth's surface
-        double theta = (v * sin(psi)) / (Re + h) * dt;
-        double dr = theta * Re / 1000;
-
-        double phi; // idk how to acturally get this yet
-
-        // Calculate pitching moment
-        double pitchingMoment = calculatePitchingMoment(v, theta, rho0, diam, L);
-        //double pitchingMoment = 0;
-
+        test_rotate_vector();
         // attempt to rectify code
-        double wx = 1;
-        double wy = 1;
-        double wz = 1;
-        // Perform RK4 integration step
-        rk4( v,  h,  psi, theta, phi,  t, dt,  m,  wx,  wy, wz);
+        double wx = 0;
+        double wy = 0;
+        double wz = 0;
+        Quaternion w = {0,wx,wy,wz};
 
-        // Write current time, velocity, and position to file
-        outfile << t << "," << v << "," << dr << "," << h << "," << rad2deg(psi) << "," << vy << "," << vx << "," << rad2deg(psi2) << "\n";
+        // Time parameters
+        double dt = 1.0; // time per calculation
+        double t_end = 1400.0; // time of simulation
 
-        // Output the current time, velocity, and position
-        std::cout << "Time: " << t << " s, Velocity: " << v << " m/s, Height: " << h << " m, Angle: " << rad2deg(psi) << " degrees" << "Pitching Moment: " << pitchingMoment << std::endl;
+        // Open a file to write data
+        std::ofstream outfile("rocket_trajectory_Quaternions.csv");
+        outfile << "Time,Vx,Vy,Vz,x,y,z\n"; // Headers
 
-        // Stop simulation if the rocket hits the ground
-        if (h < 0) {
-            h = 0;
-            break;
+        // Load data from the CSV file
+        std::vector<CoeffData> data = loadCoeffData("xf-n0012-il-1000000.csv"); // Using NACA 0012 data for reynolds number 10^6
+        if (data.empty()) {
+            std::cerr << "Failed to load data." << std::endl;
+            return 1;
         }
+
+        // Simulation begins, RK4 method loop
+        while (t <= t_end) {
+
+            // calculate Lift co-efficient
+            getCL_CD(rad2deg(psi), data, CL, CD);
+
+            // Update rocket mass and thrust
+            double m = (t <= tburn) ? (m0 - mDot * t) : mstruc;
+            thrust_local.z = (t <= tburn) ? thrust: 0.0;
+
+            // Update orientation with angular velocities
+            Quaternion orientation_dot = rk4_quaternion_update(orientation,w,dt);
+            //printf("Ori: %f ,  %f  , %f,   %f" , orientation.x,orientation.y,orientation.z,   orientation.w);
+
+            // Rotate thrust vector to global frame
+            Vector3 thrust_global = rotate_vector(orientation_dot, v.x,  v.y, v.z);
+
+            //update_position using RK4 method
+            // Perform RK4 integration step
+            rk4(v, position, t, dt,  m,  wx,  wy, wz);
+
+            // Write current time, velocity, and position to file
+            //outfile << t << "," << v.y << "," << position.z << "," << rad2deg(psi) << "," << v.z << "," << v.x << "\n";
+            outfile << t << "," << v.x << "," << v.y << "," << v.z << "," << position.x << "," << position.y << "," << position.z << "\n";
+
+            // Output the current time, velocity, and position
+            //std::cout << "Time: " << t << " s, Velocity y : " << v.y << "   Vx :  " << v.x << ", x: " << position.x << "  y: " << position.y << "  z:  " <<position.z << " local x: "<< thrust_local.x << " local y :  " << thrust_local.y << " local z:  " << thrust_local.z <<std::endl;
+
+            // Stop simulation if the rocket hits the ground
+            if (position.z < 0) {
+                position.z = 0;
+                break;
+            }
+        }
+
+        outfile.close(); //Close file
+        std::cout << "Data written to rocket_trajectory_Quaternions.csv" << std::endl;
+
+        return 0;
     }
 
-    outfile.close(); //Close file
-    std::cout << "Data written to rocket_trajectory.csv" << std::endl;
+    Vector3 scaleVector(const Vector3& vec, double scalar) {
+        return {vec.x * scalar, vec.y * scalar, vec.z * scalar};
+    }
 
-    return 0;
-}
 
-// Function to perform the RK4 method Runge Kutta
-void rk4(double& v, double& h, double& psi, double& theta, double& phi, double& t, double dt, double m, double wx, double wy, double wz) {
-    // K1 beginning of the interval using Euler's method
-    // K2 the midpoint of the interval
-    // K3 again midpoint of the interval
-    // K4 end of the interval
-    // sum weighted v, h, psi, t
+    // Helper function to sum two Vector3 objects
+    Vector3 sumVectors(const Vector3& v1, const Vector3& v2) {
+        return {v1.x + v2.x, v1.y + v2.y, v1.z+ v2.z};
+    }
 
-    auto k1 = derivatives(t, v, h, psi, theta, phi, m, wx, wy, wz);
-    auto k2 = derivatives(t + dt / 2, v + k1[0] * dt / 2, h + k1[1] * dt / 2, psi + k1[2] * dt / 2,theta + k1[3] * dt / 2, phi + k1[4] * dt / 2, m, wx, wy, wz);
-    auto k3 = derivatives(t + dt / 2, v + k2[0] * dt / 2, h + k2[1] * dt / 2, psi + k2[2] * dt / 2,theta + k2[3] * dt / 2, phi + k2[4] * dt / 2, m,  wx, wy, wz);
-    auto k4 = derivatives(t + dt, v + k3[0] * dt, h + k3[1] * dt, psi + k3[2] * dt, theta + k3[3] * dt,phi + k3[4] * dt, m, wx, wy, wz);
+    // Function to perform the RK4 method Runge Kutta
+    void rk4(Vector3& v, Vector3& h, double& t, double dt, double m, double wx, double wy, double wz) {
+        // K1 beginning of the interval using Euler's method
+        // K2 the midpoint of the interval
+        // K3 again midpoint of the interval
+        // K4 end of the interval
+        // sum weighted v, h, psi, t
+        //return {acceleration.x, acceleration.y, acceleration.z,
+          //      h_dot.x, h_dot.y, h_dot.z, dw_dot[0],dw_dot[1],dw_dot[2]};
 
-    //middle points weighted by 1/3 and ends weighted by 1/6 to achieve 4th order accuracy
-    v += (k1[0] + 2 * k2[0] + 2 * k3[0] + k4[0]) * dt / 6.0; // yn + 1
-    h += (k1[1] + 2 * k2[1] + 2 * k3[1] + k4[1]) * dt / 6.0;
-    psi += (k1[2] + 2 * k2[2] + 2 * k3[2] + k4[2]) * dt / 6.0;
-    theta += (k1[3] + 2 * k2[3] + 2 * k3[3] + k4[3]) * dt / 6.0;
-    phi += (k1[4] + 2 * k2[4] + 2 * k3[4] + k4[4]) * dt / 6.0;
-    t += dt;
 
-    // Update angular position (Euler angles)
-    double phi_increment = (k1[4] + 2 * k2[4] + 2 * k3[4] + k4[4]) * dt / 6.0;
-    double theta_increment = (k1[5] + 2 * k2[5] + 2 * k3[5] + k4[5]) * dt / 6.0;
-    double psi_increment = (k1[6] + 2 * k2[6] + 2 * k3[6] + k4[6]) * dt / 6.0;
+        auto k1 = derivatives(t, v, h, m, wx, wy, wz);
 
-    phi += phi_increment;
-    theta += theta_increment;
-    psi += psi_increment;
-}
+        // preforms h + k1[1] * dt / 2 but needs extra syntax due to Vector3 subtype
+        auto vmid = sumVectors(v,scaleVector(std::get<0>(k1), dt / 2));
+        auto hmid  = sumVectors(h,scaleVector(std::get<1>(k1), dt / 2));
+
+        auto k2 = derivatives(t + dt / 2, vmid, hmid , m, wx, wy, wz);
+
+        auto vmid2 = sumVectors(v,scaleVector(std::get<0>(k2), dt / 2));
+        auto hmid2 = sumVectors(h,scaleVector(std::get<1>(k2), dt / 2));
+
+        auto k3 = derivatives(t + dt / 2, vmid2, hmid2, m,  wx, wy, wz);
+
+        auto vmid3 = sumVectors(v,scaleVector(std::get<0>(k3), dt));
+        auto hmid3 = sumVectors(h,scaleVector(std::get<1>(k3), dt));
+
+        auto k4 = derivatives(t + dt, vmid3, hmid3, m, wx, wy, wz);
+
+        //middle points weighted by 1/3 and ends weighted by 1/6 to achieve 4th order accuracy
+        // solves v += (k1[0] + 2 * k2[0] + 2 * k3[0] + k4[0]) * dt / 6.0;
+        Vector3 Vpart1 = sumVectors(std::get<0>(k1),scaleVector(std::get<0>(k2),2));
+        Vector3 Vpart2 = sumVectors(scaleVector(std::get<0>(k3), 2), scaleVector(std::get<0>(k4), dt / 6.0));
+        v = sumVectors(v, sumVectors(Vpart1,Vpart2 )); // yn + 1
+
+        // solves h += (k1[1] + 2 * k2[1] + 2 * k3[1] + k4[1]) * dt / 6.0;
+        Vector3 hPart1 = sumVectors(std::get<1>(k1),scaleVector(std::get<1>(k2),2));
+        Vector3 hPart2 = sumVectors(scaleVector(std::get<1>(k3), 2), scaleVector(std::get<1>(k4), dt / 6.0));
+        h = sumVectors(h, sumVectors(hPart1,hPart2 )); // yn + 1
+
+        t += dt;
+
+    }
+
 
