@@ -4,6 +4,7 @@
     #include <array>
     #include <functional>
     #include "WhatItTakes.h"
+    #include <cassert>
 
     /// Equations and other methods are stored in WhatItTakes.h
 
@@ -87,7 +88,7 @@
         Vector3 position = {0, 0, 0};   // Initial position
         Vector3 v = {0.1, 0.1, 0.1};         // Initial velocity
 
-
+        test_rotate_vector();
         // attempt to rectify code
         double wx = 0;
         double wy = 0;
@@ -124,7 +125,7 @@
             //printf("Ori: %f ,  %f  , %f,   %f" , orientation.x,orientation.y,orientation.z,   orientation.w);
 
             // Rotate thrust vector to global frame
-            Vector3 thrust_global = rotate_vector(orientation_dot, thrust_local.x,  thrust_local.y, thrust_local.z);
+            Vector3 thrust_global = rotate_vector(orientation_dot, v.x,  v.y, v.z);
 
             //update_position using RK4 method
             // Perform RK4 integration step
@@ -135,7 +136,7 @@
             outfile << t << "," << v.x << "," << v.y << "," << v.z << "," << position.x << "," << position.y << "," << position.z << "\n";
 
             // Output the current time, velocity, and position
-            std::cout << "Time: " << t << " s, Velocity y : " << v.y << "   Vx :  " << v.x << ", x: " << position.x << "  y: " << position.y << "  z:  " <<position.z << std::endl;
+            //std::cout << "Time: " << t << " s, Velocity y : " << v.y << "   Vx :  " << v.x << ", x: " << position.x << "  y: " << position.y << "  z:  " <<position.z << " local x: "<< thrust_local.x << " local y :  " << thrust_local.y << " local z:  " << thrust_local.z <<std::endl;
 
             // Stop simulation if the rocket hits the ground
             if (position.z < 0) {

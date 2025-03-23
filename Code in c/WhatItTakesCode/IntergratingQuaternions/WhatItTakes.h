@@ -4,6 +4,7 @@
 
 #ifndef WHATITTAKES_WHATITTAKES_H
 #define WHATITTAKES_WHATITTAKES_H
+#include <cassert>
 
 typedef struct { double x, y, z; } Vector3;
 
@@ -199,6 +200,42 @@ Quaternion rk4_quaternion_update(Quaternion q, Quaternion omega_q, double dt) {
     return quaternion_normalize(q_final);
 }
 
+// Helper function to create a unit quaternion for rotation
+Quaternion axis_angle_to_quaternion(double ax, double ay, double az, double angle) {
+    double half_angle = angle / 2;
+    double s = sin(half_angle);
+    return {cos(half_angle), ax * s, ay * s, az * s};
+}
 
+// Helper function to compare floating-point values
+bool is_close(double a, double b, double tol = 1e-6) {
+    return fabs(a - b) < tol;
+}
+
+// Test function
+void test_rotate_vector() {
+    // Test Case 1: 90-degree rotation around Z-axis
+    Quaternion q = axis_angle_to_quaternion(0, 0, 1, M_PI / 2); // 90° rotation around Z
+    Vector3 v = rotate_vector(q, 1, 0, 0); // Expect (0,1,0)
+    assert(is_close(v.x, 0));
+    assert(is_close(v.y, 1));
+    assert(is_close(v.z, 0));
+
+    // Test Case 2: 180-degree rotation around X-axis
+    q = axis_angle_to_quaternion(1, 0, 0, M_PI); // 180° rotation around X
+    v = rotate_vector(q, 0, 1, 0); // Expect (0, -1, 0)
+    assert(is_close(v.x, 0));
+    assert(is_close(v.y, -1));
+    assert(is_close(v.z, 0));
+
+    // Test Case 3: 90-degree rotation around Y-axis
+    q = axis_angle_to_quaternion(0, 1, 0, M_PI / 2); // 90° rotation around Y
+    v = rotate_vector(q, 0, 0, 1); // Expect (1, 0, 0)
+    assert(is_close(v.x, 1));
+    assert(is_close(v.y, 0));
+    assert(is_close(v.z, 0));
+
+    std::cout << "All test cases passed!" << std::endl;
+}
 
 #endif //WHATITTAKES_WHATITTAKES_H
