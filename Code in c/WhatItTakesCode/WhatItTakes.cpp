@@ -19,23 +19,25 @@
     double CL,CD;
 
     //function prototypes
-    void rk4(Vector3& v, Vector3& h, double& t, double dt, double m, double wx, double wy, double wz);
+
+    std::tuple<Vector3, Vector3> rk4(Vector3& v, Vector3& h, double& t, double dt, double m, double wx, double wy, double wz);
 
     // Function to calculate the derivatives of the system
     std::tuple<Vector3, Vector3, Vector3>  derivatives(double t, Vector3 v, Vector3 h, double m, double wx,double wy, double wz) {
 
         /// figure out intergrating three velocitys and positions etc
+        Vector3 acceleration = {0,0,0};
+        Vector3 h_dot = {0,0,0};
+        Vector3 dw_dot = {0,0,0};
+
         double v_magnitude = sqrt(v.x * v.x + v.y * v.y + v.z * v.z);  // Rocket speed (magnitude of velocity)
         double g = g0 / pow((1 + h.z / Re), 2);    // Gravity at height
         double rho = rho0 * exp(-h.z / hscale);       // air density constant
         double drag = 0.5 * CD * rho * pow(v_magnitude, 2) * A;
         double lift = 0.5 * CL * rho * pow(v_magnitude, 2) * A;
-        Vector3 acceleration = {0,0,0};
-        Vector3 h_dot = {0,0,0};
-        Vector3 dw_dot = {0,0,0};
 
             // Calculate the net force in each direction based on thrust, drag, lift, and gravity
-           /*
+
             double drag_x = drag * (v.x / v_magnitude);  // Drag component in x
             double drag_y = drag * (v.y / v_magnitude);  // Drag component in y
             double drag_z = drag * (v.z / v_magnitude);  // Drag component in z
@@ -43,23 +45,21 @@
             double lift_x = lift * (v.x / v_magnitude);  // Lift component in x
             double lift_y = lift * (v.y / v_magnitude);  // Lift component in y
             double lift_z = lift * (v.z / v_magnitude);  // Lift component in z
-*/
-            double drag_x =  1;// Drag component in x
-            double drag_y = 1;  // Drag component in y
-            double drag_z = 1;  // Drag component in z
 
-            double lift_x =1;
-            double lift_y = 1;
-            double lift_z = 1;
+      /*  Vector3 lift_dir = cross(v, orientation);
+        lift_dir = normalize(lift_dir);
 
-            //acceleration.x = (thrust_local.x - drag_x + lift_x) / m;
-           // acceleration.y = (thrust_local.y - drag_y + lift_y) / m;
-           // acceleration.z = (thrust_local.z - drag_z + lift_z) / m - g;
+        double lift = 0.5 * CL * rho * pow(v_magnitude, 2) * A;
 
+        double lift_x = lift * lift_dir.x;
+        double lift_y = lift * lift_dir.y;
+        double lift_z = lift * lift_dir.z;*/
 
-            acceleration.x = thrust_local.x / m - drag_x / m  + lift_x/m;
-            acceleration.y = thrust_local.y / m - drag_y / m  + lift_y/m;
-            acceleration.z = (thrust_local.z + lift_z - drag_z - g) / m;
+        acceleration.x = (thrust_local.x - drag_x + lift_x) / m;
+           acceleration.y = (thrust_local.y - drag_y + lift_y) / m;
+           acceleration.z = (thrust_local.z - drag_z + lift_z) / m - g;
+
+           //acceleration.z = (thrust_local.z + lift_z - drag_z - g) / m;
 
             h_dot.x = v.x;
             h_dot.y = v.y;
@@ -72,7 +72,6 @@
 
             // Update angular velocities
             dw_dot = calculateAngularAccelerations(inertia.Ix,inertia.Iy,inertia.Iz, wx, wy, wz, torque[0], torque[1], torque[2]);
-
 
         return {acceleration, h_dot, dw_dot};
     }
@@ -87,8 +86,11 @@
 
         Vector3 position = {0, 0, 0};   // Initial position
         Vector3 v = {0.1, 0.1, 0.1};         // Initial velocity
+        Vector3 theta = {1,0,0};
 
-        test_rotate_vector();
+        // Runs test cases to validate quaternion rotate method
+        //test_rotate_vector();
+
         // attempt to rectify code
         double wx = 0;
         double wy = 0;
@@ -97,7 +99,7 @@
 
         // Time parameters
         double dt = 1.0; // time per calculation
-        double t_end = 1400.0; // time of simulation
+        double t_end = 2000.0; // 1400 time of simulation
 
         // Open a file to write data
         std::ofstream outfile("rocket_trajectory_Quaternions.csv");
@@ -120,23 +122,33 @@
             double m = (t <= tburn) ? (m0 - mDot * t) : mstruc;
             thrust_local.z = (t <= tburn) ? thrust: 0.0;
 
-            // Update orientation with angular velocities
-            Quaternion orientation_dot = rk4_quaternion_update(orientation,w,dt);
-            //printf("Ori: %f ,  %f  , %f,   %f" , orientation.x,orientation.y,orientation.z,   orientation.w);
-
-            // Rotate thrust vector to global frame
-            Vector3 thrust_global = rotate_vector(orientation_dot, v.x,  v.y, v.z);
+            /// w never changes so ...
 
             //update_position using RK4 method
             // Perform RK4 integration step
-            rk4(v, position, t, dt,  m,  wx,  wy, wz);
+            std::tuple<Vector3, Vector3> result = rk4(v, position, t, dt, m, wx, wy, wz);
+
+            v = std::get<0>(result);  // Extract velocity
+            position = std::get<1>(result);  // Extract position
+            //theta = std::get<2>(&result);
+
+            /// there is a missing link between quaterion rk4 and normal rk4. I think they need to be handled seperately such that the rk4 updates velocity etc via
+            /// newtons laws of motion and rk4 quaternion will update the orientation of the rocket based on barrowman equations and show an orientation of the rocket
+            /// barrowman equations will give cop (centre of pressure) and com (centre of mass) allowing for Inertias on the rocket from changing cop and com to be calcualted.
+
+            // Update orientation with angular velocities
+            //Quaternion orientation_dot = rk4_quaternion_update(orientation,w,dt);
+            //printf("Ori: %f ,  %f  , %f,   %f" , orientation.x,orientation.y,orientation.z,   orientation.w);
+
+            // Rotate thrust vector to global frame
+           // Vector3 velocity_global = rotate_vector(orientation_dot, v.x,  v.y, v.z);
 
             // Write current time, velocity, and position to file
             //outfile << t << "," << v.y << "," << position.z << "," << rad2deg(psi) << "," << v.z << "," << v.x << "\n";
             outfile << t << "," << v.x << "," << v.y << "," << v.z << "," << position.x << "," << position.y << "," << position.z << "\n";
 
             // Output the current time, velocity, and position
-            //std::cout << "Time: " << t << " s, Velocity y : " << v.y << "   Vx :  " << v.x << ", x: " << position.x << "  y: " << position.y << "  z:  " <<position.z << " local x: "<< thrust_local.x << " local y :  " << thrust_local.y << " local z:  " << thrust_local.z <<std::endl;
+            std::cout << "Time: " << t << " s, Vy : " << v.y << "   Vx :  " << v.x << "Vz : " << v.z << ", x: " << position.x << "  y: " << position.y << "  z:  " <<position.z << " local x: "<< thrust_local.x << " local y :  " << thrust_local.y << " local z:  " << thrust_local.z <<std::endl;
 
             // Stop simulation if the rocket hits the ground
             if (position.z < 0) {
@@ -162,7 +174,7 @@
     }
 
     // Function to perform the RK4 method Runge Kutta
-    void rk4(Vector3& v, Vector3& h, double& t, double dt, double m, double wx, double wy, double wz) {
+    std::tuple<Vector3, Vector3> rk4(Vector3& v, Vector3& h, double& t, double dt, double m, double wx, double wy, double wz) {
         // K1 beginning of the interval using Euler's method
         // K2 the midpoint of the interval
         // K3 again midpoint of the interval
@@ -203,6 +215,7 @@
 
         t += dt;
 
+        return {v, h};
     }
 
 
