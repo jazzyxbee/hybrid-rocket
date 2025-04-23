@@ -6,8 +6,6 @@
 #define WHATITTAKES_WHATITTAKES_H
 #include <cassert>
 
-typedef struct { double x, y, z; } Vector3;
-
 // Based on the Titan 2 and Gemini Spacecraft
 // -----------------------------------------------Rocket parameters stored in a struct--------------------------------
 double mprop = 111130.0;                   // kg propellent mass
@@ -16,11 +14,93 @@ double mstruc = 6736.0;                    // kg structure mass
 double m0 = mprop + mpl + mstruc;   // Initial mass = propellant + payload + structure
 double tburn = 356.0;                      // burn time in seconds
 double thrust = 1900000.0;                 // Newtons
-double mDot = 0.0; // kg/s propellent mass flow rate
+double mDot = 751.3 ; // kg/s propellent mass flow rate based on first stage 1900000 at Isp 258s
 double diam = 3.05;                        // rocket diameter meters
 double radius = 3.05/2;
 double A = M_PI * pow((3.05 / 2), 2);      // m^2 (cross-sectional area or area of nose cone)
 double L = 33.0;                            // meters (rocket length)
+
+
+//----------------------------------------------------------- Quaternion related code -----------------------------------------------------------PITCHING
+
+struct Vector3 {
+    double x, y, z;
+
+    Vector3 operator+(const Vector3& b) const { return {x + b.x, y + b.y, z + b.z}; }
+    Vector3 operator-(const Vector3& b) const { return {x - b.x, y - b.y, z - b.z}; }
+    Vector3 operator*(double s) const { return {x * s, y * s, z * s}; }
+    Vector3 operator/(double s) const { return {x / s, y / s, z / s}; }
+
+    Vector3 cross(const Vector3& b) const {
+        return {
+                y * b.z - z * b.y,
+                z * b.x - x * b.z,
+                x * b.y - y * b.x
+        };
+    }
+
+    double magnitude() const { return std::sqrt(x * x + y * y + z * z); }
+
+    Vector3 normalize() const {
+        double mag = magnitude();
+        return mag > 0 ? *this / mag : Vector3{0, 0, 0};
+    }
+};
+
+struct Quaternion {
+    double w, x, y, z;
+
+    Quaternion operator*(const Quaternion& q) const {
+        return {
+                w * q.w - x * q.x - y * q.y - z * q.z,
+                w * q.x + x * q.w + y * q.z - z * q.y,
+                w * q.y - x * q.z + y * q.w + z * q.x,
+                w * q.z + x * q.y - y * q.x + z * q.w
+        };
+    }
+
+    Quaternion normalize() const {
+        double mag = std::sqrt(w * w + x * x + y * y + z * z);
+        return {w / mag, x / mag, y / mag, z / mag};
+    }
+
+    Quaternion derivative(const Vector3& omega) const {
+        Quaternion omega_quat = {0, omega.x, omega.y, omega.z};
+        return (*this * omega_quat) * 0.5;
+    }
+
+    Quaternion operator*(double scalar) const {
+        return {w * scalar, x * scalar, y * scalar, z * scalar};
+    }
+
+};
+
+struct State {
+    Vector3 position;
+    Vector3 velocity;
+    Quaternion orientation;
+    Vector3 angular_velocity;
+
+    State operator+(const State& b) const {
+        return {
+                position + b.position,
+                velocity + b.velocity,
+                {orientation.w + b.orientation.w, orientation.x + b.orientation.x,
+                 orientation.y + b.orientation.y, orientation.z + b.orientation.z},
+                angular_velocity + b.angular_velocity
+        };
+    }
+
+    State operator*(double s) const {
+        return {
+                position * s,
+                velocity * s,
+                {orientation.w * s, orientation.x * s, orientation.y * s, orientation.z * s},
+                angular_velocity * s
+        };
+    }
+};
+
 
 // -----------------------------------------------------------Getting Co-Effecients-----------------------------------
 // Structure to hold angle, CL, and CD values
@@ -131,111 +211,6 @@ double calculatePitchingMoment(double velocity, double alpha, double rho, double
     double dynamicPressure = 0.5 * rho * std::pow(velocity, 2);
     double M = CM * dynamicPressure * S * L;  // calculating the moment
     return M;
-}
-
-//----------------------------------------------------------- Quaternion related code -----------------------------------------------------------PITCHING
-
-typedef struct { double w, x, y, z; } Quaternion;
-
-// Quaternion functions (multiply, conjugate, rotate vector, etc.)
-Quaternion quaternion_multiply(Quaternion q1, Quaternion q2) {
-    Quaternion result;
-    result.w = q1.w * q2.w - q1.x * q2.x - q1.y * q2.y - q1.z * q2.z;
-    result.x = q1.w * q2.x + q1.x * q2.w + q1.y * q2.z - q1.z * q2.y;
-    result.y = q1.w * q2.y - q1.x * q2.z + q1.y * q2.w + q1.z * q2.x;
-    result.z = q1.w * q2.z + q1.x * q2.y - q1.y * q2.x + q1.z * q2.w;
-    return result;
-}
-
-Quaternion quaternion_conjugate(Quaternion q) {
-    Quaternion result = {q.w, -q.x, -q.y, -q.z};
-    return result;
-}
-
-// Update quaternion using angular velocities
-Vector3 rotate_vector(Quaternion q, double vx, double vy, double vz) {
-    Quaternion v = {0, vx, vy, vz};
-    Quaternion q_conj = quaternion_conjugate(q);
-    Quaternion rotated_q = quaternion_multiply(quaternion_multiply(q, v), q_conj);
-
-    return {rotated_q.x, rotated_q.y, rotated_q.z};
-}
-
-Quaternion quaternion_scale(Quaternion q, double scale) {
-    Quaternion result;
-    result.w = q.w * scale;
-    result.x = q.x * scale;
-    result.y = q.y * scale;
-    result.z = q.z * scale;
-    return result;
-}
-
-Quaternion quaternion_add(Quaternion q1, Quaternion q2) {
-    Quaternion result;
-    result.w = q1.w + q2.w;
-    result.x = q1.x + q2.x;
-    result.y = q1.y + q2.y;
-    result.z = q1.z + q2.z;
-    return result;
-}
-
-// Normalize quaternion to avoid drift
-Quaternion quaternion_normalize(Quaternion q) {
-    double norm = sqrt(q.w * q.w + q.x * q.x + q.y * q.y + q.z * q.z);
-    return {q.w / norm, q.x / norm, q.y / norm, q.z / norm};
-}
-
-// Runge-Kutta 4 method for quaternion update
-Quaternion rk4_quaternion_update(Quaternion q, Quaternion omega_q, double dt) {
-    Quaternion k1 = quaternion_scale(quaternion_multiply(q, omega_q), 0.5 * dt);
-    Quaternion k2 = quaternion_scale(quaternion_multiply(quaternion_add(q, k1), omega_q), 0.5 * dt);
-    Quaternion k3 = quaternion_scale(quaternion_multiply(quaternion_add(q, k2), omega_q), dt);
-    Quaternion k4 = quaternion_scale(quaternion_multiply(quaternion_add(q, k3), omega_q), dt);
-
-    Quaternion q_final = quaternion_add(q, quaternion_scale(k1, 1.0 / 6.0));
-    q_final = quaternion_add(q_final, quaternion_scale(k2, 2.0 / 6.0));
-    q_final = quaternion_add(q_final, quaternion_scale(k3, 2.0 / 6.0));
-    q_final = quaternion_add(q_final, quaternion_scale(k4, 1.0 / 6.0));
-
-    return quaternion_normalize(q_final);
-}
-
-// Helper function to create a unit quaternion for rotation
-Quaternion axis_angle_to_quaternion(double ax, double ay, double az, double angle) {
-    double half_angle = angle / 2;
-    double s = sin(half_angle);
-    return {cos(half_angle), ax * s, ay * s, az * s};
-}
-
-// Helper function to compare floating-point values
-bool is_close(double a, double b, double tol = 1e-6) {
-    return fabs(a - b) < tol;
-}
-
-// Test function
-void test_rotate_vector() {
-    // Test Case 1: 90-degree rotation around Z-axis
-    Quaternion q = axis_angle_to_quaternion(0, 0, 1, M_PI / 2); // 90° rotation around Z
-    Vector3 v = rotate_vector(q, 1, 0, 0); // Expect (0,1,0)
-    assert(is_close(v.x, 0));
-    assert(is_close(v.y, 1));
-    assert(is_close(v.z, 0));
-
-    // Test Case 2: 180-degree rotation around X-axis
-    q = axis_angle_to_quaternion(1, 0, 0, M_PI); // 180° rotation around X
-    v = rotate_vector(q, 0, 1, 0); // Expect (0, -1, 0)
-    assert(is_close(v.x, 0));
-    assert(is_close(v.y, -1));
-    assert(is_close(v.z, 0));
-
-    // Test Case 3: 90-degree rotation around Y-axis
-    q = axis_angle_to_quaternion(0, 1, 0, M_PI / 2); // 90° rotation around Y
-    v = rotate_vector(q, 0, 0, 1); // Expect (1, 0, 0)
-    assert(is_close(v.x, 1));
-    assert(is_close(v.y, 0));
-    assert(is_close(v.z, 0));
-
-    std::cout << "All test cases passed!" << std::endl;
 }
 
 #endif //WHATITTAKES_WHATITTAKES_H
