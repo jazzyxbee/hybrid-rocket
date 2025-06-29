@@ -65,15 +65,11 @@ std::array<double, 4> derivatives(double t, double v, double h, double psi, doub
 
     //printf("%f \n", drag);
     //double lift = (0.5) * CL * rho * pow(v, 2) * AL; //not accurate so removing for now
-    double Dv_dt, h_dot, psi_dot, theta_dot;
-    double phi_dot = 0; // defined here due to scope
-
-
+    double Dv_dt, h_dot, psi_dot, theta_dot, phi_dot;
 
   if(t <= 40) { // before gravity turn currently at karman line possibly to high??
           Dv_dt = T / m - drag / m - g ;
           h_dot = v ;
-          theta_dot = 0;
 
     } else { // after gravity turn
         Dv_dt = T / m - drag / m - g * cos(psi);
@@ -81,22 +77,41 @@ std::array<double, 4> derivatives(double t, double v, double h, double psi, doub
         theta_dot = (v * sin(psi)) / (Re + h);
         phi_dot = g * sin(psi) / v; // defined here due to scope
         psi_dot = phi_dot - theta_dot;
+        if (t>200){
+            //adjusting theta direction for boostback burn
+            theta_dot = - (v * sin(psi)) / (Re + h);
+        }
     }
 
     double targetPsi = psi; // default is "hold current heading"
-    if (t > 144.611 && t < 167.67) {
+
+    if (t > 180 && t < 200) {
         targetPsi = deg2rad(-90);
-        // Simple proportional control law to steer to target psi
-        double psi_rate_control = (targetPsi - psi) * 0.05;
+        double psi_rate_control = (targetPsi - psi) * 0.03; // slower rotation
+        psi_dot = psi_rate_control;
+    } if (t > 200 && t < 220) {
+        targetPsi = deg2rad(50);
+        double psi_rate_control = (targetPsi - psi) * 0.2; // slower rotation
         psi_dot = psi_rate_control;
     }
 
-
+    if (t > 400 && t < 430) {
+        targetPsi = deg2rad(90);
+        double psi_rate_control = (targetPsi - psi) * 0.01; // slower rotation
+        psi_dot = psi_rate_control;
+    }
+    if (t > 430 && t < 450) {
+        targetPsi = deg2rad(180);
+        double psi_rate_control = (targetPsi - psi) * 0.1; // slower rotation
+        psi_dot = psi_rate_control;
+    }
+    //printf("%f \n",Dv_dt );
+     //printf("%f \n",t);
     return {Dv_dt, h_dot, psi_dot, theta_dot};
 }
 
 // Function to perform the RK4 method
-void rk4(double& v, double& h, double& psi, double& t, double dt, double m, double T, double Re, double g0, double hscale, double rho0, double A, double CD, double CL,double AL) {
+void rk4(double& v, double& h, double& psi, double& theta, double& t, double dt, double m, double T, double Re, double g0, double hscale, double rho0, double A, double CD, double CL,double AL) {
     // K1 beginning of the interval using Eulers method
     // K2 the midpoint of the interval
     // K3 again midpoint of the interval
@@ -112,6 +127,7 @@ void rk4(double& v, double& h, double& psi, double& t, double dt, double m, doub
     v += (k1[0] + 2 * k2[0] + 2 * k3[0] + k4[0]) * dt / 6.0; // yn + 1
     h += (k1[1] + 2 * k2[1] + 2 * k3[1] + k4[1]) * dt / 6.0;
     psi += (k1[2] + 2 * k2[2] + 2 * k3[2] + k4[2]) * dt / 6.0;
+    theta += (k1[3] + 2 * k2[3] + 2 * k3[3] + k4[3]) * dt / 6.0;
     t += dt;
 }
 
@@ -146,6 +162,9 @@ int main() {
 
     //thrust levels
     double T = thrustAtSeaLevelFirstStage; // initial thrust
+    double fuelBurned = 0;
+    double burnTime = 0;
+    double secondIgnitionBurnTime = 0;
 
     // Atmospheric Conditions
     double g0 = 9.81; // gravity at sea level
@@ -163,19 +182,20 @@ int main() {
 
     // Differential inputs
     double t = 0.0; // seconds
-    double v = 1.0; // meters per second
+    double v = 8.0; // meters per second
     double h = 0.0; // height position in meters
+    double theta = 0.0; // downrange angle relative to lunch site
     double psi = deg2rad(8); // start at 90 degrees
 
     double CL,CD;
 
     // Time parameters
-    double dt = 1.0; // time per calculation
+    double dt = 1; // time per calculation
     double t_end = 450.0; // time of simulation
 
     // Open a file to write data
     std::ofstream outfile("rocket_trajectory.csv");
-    outfile << "Time,Velocity,Distance,Height,Angle,Vx,Vy,Psi2\n"; // Headers
+    outfile << "Time,Velocity,Distance,Height,Angle,Vx,Vy,Theta\n"; // Headers
 
     // Load data from the CSV file
     std::vector<CoeffData> data = loadCoeffData("xf-n0012-il-1000000.csv"); // Using NACA 0012 data for reynolds number 10^6
@@ -183,8 +203,6 @@ int main() {
         std::cerr << "Failed to load data." << std::endl;
         return 1;
     }
-
-    bool rotatedForBoostback = false;
 
     // RK4 method loop
     while (t <= t_end) {
@@ -194,72 +212,78 @@ int main() {
         CL = 0.2; //
         //printf("%f \n",CD);
 
-        double fuelBurned = 0;
-
         // Update rocket mass and thrust
-        if (t < 144.611) {
+        if (t < 140) {
             //Rocket launch
             fuelBurned = mDotFirstStage * t;
+            burnTime = t;
             m = m0 - fuelBurned;
             T = (t <= tburnFirstStage) ? thrustAtSeaLevelFirstStage : 0.0;
 
-        } else if (t > 144.611 && t < 162.168) {
+        } else if (t > 140 && t < 162.168) {
             //Rocket second stage ejection, MECO, and rotation
             m = m0 - mPayload - mpropSecondStage - fuelBurned;
             T = 0;
         } else if (t > 162.168&& t < 210.77) {
-            double deltaT = t - (162.168-144.611);
+            burnTime++;
+            secondIgnitionBurnTime++;
             //boostback burn ignition approximately three engines NASA Falcon9 Datasheet
-            m = m0 - mPayload - mpropSecondStage - fuelBurned - (mDotFirstStage/3)*deltaT;
-            T = thrustInVaccumFirstStage/10;
-            //T = 0;
-        } else if (t > 210.77 && t < 373) {
+            m =  m0 - mPayload - mpropSecondStage - fuelBurned - (mDotFirstStage/3)*(secondIgnitionBurnTime);
+            T = -thrustAtSeaLevelFirstStage/3;
+            if(t==185){fuelBurned = fuelBurned + (mDotFirstStage/3)*(secondIgnitionBurnTime);}
+            if (t>185){
+                T =0;
+                m =  m0 - mPayload - mpropSecondStage - fuelBurned;
+            }
+            if (t>210.77){ fuelBurned = fuelBurned + (mDotFirstStage/3)*(secondIgnitionBurnTime);}
+        } else if (t > 210.77 && t < 375) {
             //boostback burn cuts off
             T = 0;
-        }else if (t>373){
-            v = 0;
-        }
+        }else if (t>375&& t<385){
+           CD =0.7;
+            m =  m0 - mPayload - mpropSecondStage - fuelBurned - (mDotFirstStage/3)*(secondIgnitionBurnTime);
+            secondIgnitionBurnTime++;
+           T = thrustAtSeaLevelFirstStage/3;
+            if(m <= mstruc){
+                T = 0;
+                m = mstruc;
+            }
 
+        } else if(t>385 && t<425){
+            CD = 0.7;
+            T=0;
+            m = mstruc;
+        } else if (t>425 && t<450){
+            CD = 0.7;
+           T = -thrustAtSeaLevelFirstStage/9;
+           m = mstruc;
+        }
         // Components of velocity     okay i dont know why but these two are diffenitley switched around and vx is vy etc
         // i need to figure out why this is happening
         //double vx = v * cos(psi);
         //double vy = v * sin(psi);
+
         double vy = v * cos(psi);
         double vx = v * sin(psi);
-        double psi2 = atan2(vy, vx);
 
-        // Perform RK4 integration step
-        rk4(v, h, psi, t, dt, m, T, Re, g0, hscale, rho0, A, CD,CL,AL);
-
-/*
-        if (t>144.611 && t<167.67) {
-            //  if (!rotatedForBoostback) {
-            double targetPsi = deg2rad(130);  // This targets *opposite total velocity vector*
-            psi += (targetPsi - psi) * 0.05;        // apply 5% of the rotation per step               // rotatedForBoostback = true;
-        }
-           // }
-
-       } else if (t>167.67 && t<200) {
-           //  if (!rotatedForBoostback) {
-           double targetPsi = deg2rad(-90);  // This targets *opposite total velocity vector*
-           psi += (targetPsi - psi) * 0.08;        // apply 5% of the rotation per step               // rotatedForBoostback = true;
-           //}
-       }else if (t>200 && t<250) {
-           //  if (!rotatedForBoostback) {
-           double targetPsi = deg2rad(-70);  // This targets *opposite total velocity vector*
-           psi += (targetPsi - psi) * 0.08;        // apply 5% of the rotation per step               // rotatedForBoostback = true;
-           //}
-       }*/
-            //printf("%f %n",   rad2deg(psi2));
-
-        //double vtot = sqrt(pow(vx,2) + pow(vy,2));
+        //used to validate alternative methods of calculating psi
+        //double psi2 = atan2(vy, vx);
 
         // Calculate distance traveled along the Earth's surface
-        double theta = (v * sin(psi)) / (Re + h) * dt;
-        double dr = theta * Re / 1000;
+        double dr = theta * Re /1000;
+        printf("%f\n",dr);
+
+        if (t>200){
+            //adjusting for boostback burn
+            vx = v * -sin(psi); // this flips it artificially but not
+        }
+
+        // Perform RK4 integration step
+        rk4(v, h, psi, theta, t, dt, m, T, Re, g0, hscale, rho0, A, CD,CL,AL);
 
         // Write current time, velocity, and position to file
-        outfile << t << "," << v << "," << dr << "," << h << "," << rad2deg(psi) << "," << vx << "," << vy << "," << rad2deg(psi2) << "\n";
+        // converting height in m to km and converting psi to be 90 degrees pointing straight up instead of starting straight up at 0 degrees
+        outfile << t << "," << v << "," << dr << "," << h/1000 << "," << 90-rad2deg(psi) << "," << vx << "," << vy << "," << theta << "\n";
 
         // Output the current time, velocity, and position
         //std::cout << "Time: " << t << " s, Velocity: " << v << "  Acceleration:   " << v*t << "  Height: " << h << " m, Angle: " << rad2deg(psi) << " degrees" << std::endl;
